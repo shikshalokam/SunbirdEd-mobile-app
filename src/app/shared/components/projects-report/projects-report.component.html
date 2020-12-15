@@ -1,0 +1,67 @@
+<ion-fab vertical="top" horizontal="end" class="fab-group">
+  <ion-fab-button size="small">
+    <ion-icon name="ellipsis-vertical"></ion-icon>
+  </ion-fab-button>
+  <ion-fab-list side="start">
+    <ion-fab-button color="medium" (click)="getReport('share')">
+      <ion-icon name="share"></ion-icon>
+    </ion-fab-button>
+    <ion-fab-button color="medium" (click)="getReport('download')">
+      <ion-icon name="download"></ion-icon>
+    </ion-fab-button>
+  </ion-fab-list>
+</ion-fab>
+<div class="mapped-school">
+  <h5>
+   {{mappedSchool}}
+  </h5>
+</div>
+<div class="report-title">
+  <h5>
+    {{ "LABELS.PROJECTS_COMPLETED_IN" | translate }} {{type}}
+  </h5>
+</div>
+<div>July</div>
+<ion-row class="report-status-card">
+  <ion-col class="status-card task-completed-box">
+    <h3>{{ "LABELS.COMPLETED" | translate }}</h3>
+    <h1>
+      <!-- <span *ngIf="report.projectsCompleted <= 9"> -->
+      <span>
+        01 &nbsp;</span>
+      <!-- <span *ngIf="report.projectsCompleted >= 10">
+        {{ report.projectsCompleted }} &nbsp;</span> -->
+    </h1>
+  </ion-col>
+  <ion-col class="status-card task-pending-box">
+    <h3>{{ "LABELS.PENDING" | translate }}</h3>
+    <h1>
+      <!-- <span *ngIf="report.projectsPending <= 9"> -->
+      <span>
+        00 &nbsp;</span>
+      <!-- <span *ngIf="report.projectsPending >= 10">
+        {{ report.projectsPending }} &nbsp;</span> -->
+    </h1>
+  </ion-col>
+</ion-row>
+<div class="action-item" (click)="viewFullReport()">
+  {{ "LABELS.VIEW_FULL_REPORT" | translate }}
+</div>
+<h5>
+  {{ "LABELS.TOTAL_TASKS_COMPLETED" | translate }} {{type}}
+</h5>
+<div>July</div>
+<app-pie-chart [data]="chartData">
+</app-pie-chart>
+<ion-row>
+  <ion-col class="legend-left">
+    <p> <span class="dot-pending"> &nbsp; </span>
+      {{'LABELS.TASKS_PENDING' | translate}} </p>
+    <span>10</span>
+  </ion-col>
+  <ion-col class="legend-right">
+    <p> <span class="dot-completed"> &nbsp; </span>
+      {{'LABELS.TASKS_COMPLETED' | translate}} </p>
+    <span> 10 </span>
+  </ion-col>
+</ion-row>

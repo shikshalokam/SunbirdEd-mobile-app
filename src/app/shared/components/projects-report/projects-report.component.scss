@@ -1,0 +1,83 @@
+@import'../../../../theme/colors.scss';
+
+.report-status-card{
+  margin-top:15px;
+  .status-card {
+    border-radius: 5px;
+    color: $white-color;
+    span {
+      border-bottom: 2px solid $white-color;
+      font-size: 36px;
+    }
+    h1 {
+      margin-top: 10px;
+    }
+  }
+}
+
+  .task-completed-box {
+    background: linear-gradient(140deg, #5bd895 32%, #45673b 71%, #1a4b00 88%);
+    margin-right: 3px;
+  }
+  .task-pending-box {
+    background: linear-gradient(140deg, #d8735b 32%, #a31919 71%, #9f0303 88%);
+    margin-left: 3px;
+  }
+
+  .dot-pending {
+    height: 16px;
+    width: 16px;
+    background-color: $light-grey-color;
+    border-radius: 50%;
+    display: inline-block;
+    font-size: 16px !important;
+  }
+  .dot-completed {
+    height: 16px;
+    width: 16px;
+    background-color: #20ba8d;
+    border-radius: 50%;
+    display: inline-block;
+    font-size: 16px !important;
+  }
+  .legend-left {
+    text-align: center;
+    padding: 0px;
+    margin-left: -9%;
+    font-weight: 500;
+    span{
+      font-size:24px;
+    }
+  }
+  .legend-right {
+    text-align: center;
+    margin-right: -7%;
+    padding: 0px;
+    font-weight: 500;
+    span{
+      font-size:24px;
+    }
+  }
+  .fab-group{
+    margin-top: 55px;
+    ion-fab-list{
+      ion-icon{
+      color: $black-color;
+      }
+    }
+  }
+  .mapped-school{
+  width: 59%; 
+  min-height: 25px;
+  }
+  .report-title{
+    margin-top: 2.5em;
+    width: 90%;
+  }
+  .action-item {
+    color: #3b86ff;
+    text-align: center;
+    border-bottom: 1px solid #000;
+    margin: 30px 0px;
+    padding-bottom: 10px;
+  }

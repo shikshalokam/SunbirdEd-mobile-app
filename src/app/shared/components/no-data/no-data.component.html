@@ -1,0 +1,4 @@
+<div class="message">
+  <h5 *ngIf="message"> {{message | translate}} </h5>
+  <h5 *ngIf="!message"> {{'MESSAGES.NO_DATA_FOUND' | translate}} </h5>
+</div>

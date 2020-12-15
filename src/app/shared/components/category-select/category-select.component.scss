@@ -1,0 +1,32 @@
+@import'../../../../theme/colors.scss'; 
+.custom-popup
+{
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    display: flex;
+    bottom: 0;
+}
+
+.pop-container
+{
+    margin: auto;
+    min-width: 60%;
+    box-shadow: 0 4px 8px 0 $dark-grey-color;
+    padding: 10px;
+    background: $white-color;
+}
+.category-input{
+    border-bottom: 1px solid $dark-grey-color;
+}
+
+.bottom-buttons{
+    color:var(--ion-color-primary) ;
+    ion-buttons{
+        justify-content: space-around;
+    }
+
+}

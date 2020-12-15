@@ -1,0 +1,38 @@
+@import'../../../../theme/colors.scss';
+
+.category-box{
+    h4{
+        text-transform: uppercase;
+    }
+    .cat-icon{
+        max-width: 60%;
+    }
+}
+.category-projects{
+    background: $white-color;
+    padding: 5px;
+    ion-card-header{
+        border-bottom: 2px solid var(--ion-color-primary); 
+        padding-bottom:0px; 
+        padding-top: 5px;
+        padding-right: 0px;
+    }
+    .popover-menu{
+        margin-top: 0px;
+        float: right;
+        font-size: 26px; 
+        z-index: 999;
+        color: var(--ion-color-primary)
+    }
+    .val-box{
+        font-weight: 600;
+        color:$black-color;
+        margin: auto;
+    }
+    .label-box{
+        margin: auto;
+        font-weight: 600;
+        color:$dark-grey-color;
+    }
+    .text-right{ text-align: right;}
+}

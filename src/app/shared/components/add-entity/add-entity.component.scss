@@ -1,0 +1,29 @@
+@import'../../../../theme/colors.scss';
+
+.entity-name{
+    text-align: center;
+    color: $dark-brown-color;
+    text-transform: capitalize;
+}
+.enitity-list{
+    ion-label{
+        text-overflow: unset;
+        white-space: normal;
+    }
+    ion-checkbox{
+        margin-right: 15px;
+    }
+}
+.footer-btn{
+    text-align: center;
+    padding: 15px;
+    /* min-height: 50px; */
+    background: var(--ion-color-primary);
+    color:$white-color;
+   }
+   .loadmore-btn{
+    text-align: center;
+    ion-button{
+        --border-radius:50px;
+    }
+}
