@@ -1,7 +1,6 @@
 import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
 import { FormGroup, FormControl, Validators, FormBuilder } from '@angular/forms';
 import { ModalController } from '@ionic/angular';
-import { ToastMessageService } from 'src/app/core';
 import * as _ from 'underscore';
 
 @Component({
@@ -19,7 +18,6 @@ export class CategorySelectComponent implements OnInit {
   otherCategory = { input: 'text', field: 'otherCategories', value: '', show: false, validation: { required: true } };
   constructor(
     public fb: FormBuilder,
-    public toast: ToastMessageService,
     private modal: ModalController
   ) { }
   ngOnInit() {
@@ -120,7 +118,7 @@ export class CategorySelectComponent implements OnInit {
         });
       }
     });
-    valid ? this.modal.dismiss(this.selectedCategories) : this.toast.showMessage('MESSAGES.PLEASE_ADD_OTHERCATEGORIES', 'danger')
+    // valid ? this.modal.dismiss(this.selectedCategories) : this.toast.showMessage('MESSAGES.PLEASE_ADD_OTHERCATEGORIES', 'danger')
   }
   close() {
     // this.onSubmit.emit();

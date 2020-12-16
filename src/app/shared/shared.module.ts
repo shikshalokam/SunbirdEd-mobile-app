@@ -10,7 +10,6 @@ import {
 // import { MomentModule } from 'ngx-moment';
 // import { HighchartsChartModule } from 'highcharts-angular';
 import { GraphCirlceComponent } from './components/graph-cirlce/graph-cirlce.component';
-import { FilterModalComponent } from './components/filter-modal/filter-modal.component';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { FilterPipe } from './pipes/filter.pipe';
@@ -28,7 +27,6 @@ import { CamelToTitlePipe } from './pipes/camelToTitle/camel-to-title.pipe';
     StarRatingsComponent,
     AddEntityComponent,
     GraphCirlceComponent,
-    FilterModalComponent,
     CategorySelectComponent,
     MultiSelectionComponent,
     FilterPipe,
@@ -60,7 +58,6 @@ import { CamelToTitlePipe } from './pipes/camelToTitle/camel-to-title.pipe';
     StarRatingsComponent,
     AddEntityComponent,
     GraphCirlceComponent,
-    FilterModalComponent,
     CategorySelectComponent,
     FilterPipe,
     CreateTaskComponent,

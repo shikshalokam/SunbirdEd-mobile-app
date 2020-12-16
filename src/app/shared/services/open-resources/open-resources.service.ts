@@ -21,6 +21,6 @@ export class OpenResourcesService {
   }
 
   openBodh(link: string) {
-    this.launchExternalApp('', environment.LMSAppId, link);
+    // this.launchExternalApp('', environment.LMSAppId, link);
   }
 }

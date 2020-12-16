@@ -1,7 +1,6 @@
 import { Component, OnInit, Input } from '@angular/core';
 import { AlertController, ModalController } from '@ionic/angular';
 import { TranslateService } from '@ngx-translate/core';
-import { urlConstants, NetworkService, LoaderService, ToastMessageService, KendraApiService } from '../../../core';
 @Component({
   selector: 'app-single-selection-search',
   templateUrl: './single-selection-search.component.html',
@@ -18,15 +17,11 @@ export class SingleSelectionSearchComponent implements OnInit {
     private alertCtrl: AlertController,
     private translate: TranslateService,
     private modalCtrl: ModalController,
-    private kendraApiService: KendraApiService,
-    private networkService: NetworkService,
-    private loaderService: LoaderService,
-    private toastMessageService: ToastMessageService
   ) { }
   ngOnInit() {
-    if (!this.url) {
-      this.url = urlConstants.API_URLS.PRIVATE_PROGRAMS;
-    }
+    // if (!this.url) {
+    //   this.url = urlConstants.API_URLS.PRIVATE_PROGRAMS;
+    // }
     this.button = this.type == 'programs' ? 'LABELS.ADD_PROGRAM' : 'LABELS.ADD_STATE'
     this.getData();
   }
@@ -68,23 +63,23 @@ export class SingleSelectionSearchComponent implements OnInit {
   }
 
   getData() {
-    if (this.networkService.isNetworkAvailable) {
-      this.loaderService.startLoader();
-      const config = {
-        url: this.url
-      }
-      this.kendraApiService.get(config).subscribe(data => {
-        this.loaderService.stopLoader();
+    // if (this.networkService.isNetworkAvailable) {
+    //   this.loaderService.startLoader();
+    //   const config = {
+    //     url: this.url
+    //   }
+    //   this.kendraApiService.get(config).subscribe(data => {
+    //     this.loaderService.stopLoader();
 
-        if (data.result && data.result.length) {
-          this.dataList = data.result;
-        }
-      }, error => {
-        this.loaderService.stopLoader();
-      })
-    } else {
-      this.toastMessageService.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
-    }
+    //     if (data.result && data.result.length) {
+    //       this.dataList = data.result;
+    //     }
+    //   }, error => {
+    //     this.loaderService.stopLoader();
+    //   })
+    // } else {
+    //   this.toastMessageService.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
+    // }
   }
   selectProgram(data) {
     this.selectedData = data;

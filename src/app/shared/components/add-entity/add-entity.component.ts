@@ -1,9 +1,8 @@
 import { Component, OnInit, Input } from '@angular/core';
 import {
-  urlConstants, NetworkService, LoaderService,
-  ToastMessageService, KendraApiService
+  urlConstants, LoaderService
 } from '../../../core';
-import { Storage } from '@ionic/storage';
+// import { Storage } from '@ionic/storage';
 import * as _ from 'underscore';
 import { AlertController, ModalController } from '@ionic/angular';
 
@@ -27,11 +26,8 @@ export class AddEntityComponent implements OnInit {
   title;
   entityCount;
   constructor(
-    private networkService: NetworkService,
     private loader: LoaderService,
-    private toast: ToastMessageService,
     private storage: Storage,
-    private kendraApiService: KendraApiService,
     private modalCtrl: ModalController,
   ) {
     this.onSearch = _.debounce(this.onSearch, 500)
@@ -51,28 +47,28 @@ export class AddEntityComponent implements OnInit {
     this.getEntities(subEntity.detail.value);
   }
   getEntities(entityType) {
-    if (this.networkService.isNetworkAvailable) {
-      this.loader.startLoader();
-      const config = {
-        url: urlConstants.API_URLS.GET_ENTITY_LIST + this.stateId + '?type=' + entityType + '&search=' + this.searchText + '&page=' + this.page + '&limit=' + this.limit
-      }
-      this.kendraApiService.get(config).subscribe(data => {
-        if (data.result.data && data.result.data.length) {
-          this.entities = this.entities.concat(data.result.data);
-          this.entityCount = data.result.count;
-          this.noSubEntity = false;
+    // if (this.networkService.isNetworkAvailable) {
+    //   this.loader.startLoader();
+    //   const config = {
+    //     url: urlConstants.API_URLS.GET_ENTITY_LIST + this.stateId + '?type=' + entityType + '&search=' + this.searchText + '&page=' + this.page + '&limit=' + this.limit
+    //   }
+    //   this.kendraApiService.get(config).subscribe(data => {
+    //     if (data.result.data && data.result.data.length) {
+    //       this.entities = this.entities.concat(data.result.data);
+    //       this.entityCount = data.result.count;
+    //       this.noSubEntity = false;
 
-        } else {
-          this.noSubEntity = true;
-        }
+    //     } else {
+    //       this.noSubEntity = true;
+    //     }
 
-        this.loader.stopLoader();
-      }, error => {
-        this.loader.stopLoader();
-      })
-    } else {
-      this.toast.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
-    }
+    //     this.loader.stopLoader();
+    //   }, error => {
+    //     this.loader.stopLoader();
+    //   })
+    // } else {
+    //   this.toast.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
+    // }
   }
   checkUserMapping() {
     this.storage.get('profileData').then(data => {
@@ -88,33 +84,33 @@ export class AddEntityComponent implements OnInit {
     this.getEntities(this.childEntity);
   }
   getSubEntities(stateId) {
-    if (this.networkService.isNetworkAvailable) {
-      this.loader.startLoader();
-      const config = {
-        url: urlConstants.API_URLS.GET_SUBENTITIES + stateId
-      }
-      this.kendraApiService.get(config).subscribe(data => {
-        this.loader.stopLoader();
-        if (data.result) {
-          let selist = []
-          data.result.forEach(se => {
-            let entity = {
-              name: se,
-              value: se,
-            }
-            selist.push(entity);
-          });
-          this.subEntities = selist.reverse();
-          this.selectedEntity = this.subEntities[0];
-          this.childEntity = this.subEntities[0].value;
-          this.getEntities(this.subEntities[0].value)
-        }
-      }, error => {
-        this.loader.stopLoader();
-      })
-    } else {
-      this.toast.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
-    }
+    // if (this.networkService.isNetworkAvailable) {
+    //   this.loader.startLoader();
+    //   const config = {
+    //     url: urlConstants.API_URLS.GET_SUBENTITIES + stateId
+    //   }
+    //   this.kendraApiService.get(config).subscribe(data => {
+    //     this.loader.stopLoader();
+    //     if (data.result) {
+    //       let selist = []
+    //       data.result.forEach(se => {
+    //         let entity = {
+    //           name: se,
+    //           value: se,
+    //         }
+    //         selist.push(entity);
+    //       });
+    //       this.subEntities = selist.reverse();
+    //       this.selectedEntity = this.subEntities[0];
+    //       this.childEntity = this.subEntities[0].value;
+    //       this.getEntities(this.subEntities[0].value)
+    //     }
+    //   }, error => {
+    //     this.loader.stopLoader();
+    //   })
+    // } else {
+    //   this.toast.showMessage('MESSAGES.YOU_ARE_WORKING_OFFLINE_TRY_AGAIN', 'danger');
+    // }
   }
 
   onSearch(event) {

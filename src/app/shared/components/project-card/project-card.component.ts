@@ -1,10 +1,9 @@
 import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
 import { PopoverController, AlertController } from '@ionic/angular';
 import { PopoverComponent } from '../popover/popover.component';
-import { menuConstants, ToastMessageService, DbService, UtilsService } from 'src/app/core';
+import { menuConstants, DbService, UtilsService } from '../../../core';
 import { TranslateService } from '@ngx-translate/core';
 import { Router } from '@angular/router';
-import { environment } from 'src/environments/environment';
 
 @Component({
   selector: 'app-project-card',
@@ -19,7 +18,6 @@ export class CardsComponent implements OnInit {
   constructor(
     private popoverController: PopoverController,
     private router: Router,
-    private toast: ToastMessageService,
     private translate: TranslateService,
     private alert: AlertController,
     private db: DbService,
@@ -64,7 +62,7 @@ export class CardsComponent implements OnInit {
         break;
       }
       case "shareProject": {
-        this.toast.showMessage('MESSAGES.COMING_SOON', 'danger');
+        // this.toast.showMessage('MESSAGES.COMING_SOON', 'danger');
         break;
       }
     }
@@ -95,13 +93,13 @@ export class CardsComponent implements OnInit {
   }
 
   update(project) {
-    project.isEdit = true;
-    this.db.createPouchDB(environment.db.projects);
-    project = this.utils.setStatusForProject(project);
-    this.db.update(project).then(success => {
-      project._rev = success.rev;
-      this.toast.showMessage('MESSAGES.PROJECT_DELETED_SUCCESSFUL', 'success');
-    }).catch(error => {
-    })
+    // project.isEdit = true;
+    // this.db.createPouchDB(environment.db.projects);
+    // project = this.utils.setStatusForProject(project);
+    // this.db.update(project).then(success => {
+    //   project._rev = success.rev;
+    //   this.toast.showMessage('MESSAGES.PROJECT_DELETED_SUCCESSFUL', 'success');
+    // }).catch(error => {
+    // })
   }
 }

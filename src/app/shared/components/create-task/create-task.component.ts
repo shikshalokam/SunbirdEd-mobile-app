@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { ModalController } from '@ionic/angular';
-import { UtilsService, AttachementService, ToastMessageService } from '../../../core';
+import { UtilsService, AttachementService } from '../../../core';
 @Component({
   selector: 'app-create-task',
   templateUrl: './create-task.component.html',
@@ -14,7 +14,6 @@ export class CreateTaskComponent implements OnInit {
     private modalCtrl: ModalController,
     private utils: UtilsService,
     private attachmentService: AttachementService,
-    private toast: ToastMessageService
   ) { }
 
   ngOnInit() {
@@ -34,10 +33,10 @@ export class CreateTaskComponent implements OnInit {
   }
 
   addTask() {
-    this.newTask.name ? this.modalCtrl.dismiss(this.newTask) : this.toast.showMessage('MESSAGES.REQUIRED_FIELDS', 'danger')
+    // this.newTask.name ? this.modalCtrl.dismiss(this.newTask) : this.toast.showMessage('MESSAGES.REQUIRED_FIELDS', 'danger')
   }
 
   share() {
-    this.toast.showMessage('MESSAGES.COMING_SOON', 'danger');
+    // this.toast.showMessage('MESSAGES.COMING_SOON', 'danger');
   }
 }

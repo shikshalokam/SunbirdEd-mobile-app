@@ -3,8 +3,7 @@ import { AlertController, Platform, PopoverController } from "@ionic/angular";
 import { SocialSharing } from "@ionic-native/social-sharing/ngx";
 import { File } from "@ionic-native/file/ngx";
 import { FileTransfer } from "@ionic-native/file-transfer/ngx";
-import { UtilsService } from "src/app/core/services/utils.service";
-import { LoaderService, ToastMessageService, UnnatiDataService, urlConstants } from "src/app/core";
+import { LoaderService, urlConstants,UtilsService } from "../../../core";
 import { FilePath } from "@ionic-native/file-path/ngx";
 import { TranslateService } from "@ngx-translate/core";
 import { AndroidPermissions } from "@ionic-native/android-permissions/ngx";
@@ -29,10 +28,8 @@ export class DownlaodShareComponent {
     private file: File,
     public alertController: AlertController,
     public utils: UtilsService,
-    public toast: ToastMessageService,
     public loader: LoaderService,
     public filePath: FilePath,
-    public unnatiSrvc: UnnatiDataService,
     private translate: TranslateService,
     private androidPermissions: AndroidPermissions
   ) {
@@ -62,33 +59,33 @@ export class DownlaodShareComponent {
 
     let config = { url: this.downloadUrl };
 
-    let res = await this.unnatiSrvc.get(config).toPromise();
+    // let res = await this.unnatiSrvc.get(config).toPromise();
 
-    if (res.result && !res.result.data && !res.result.data.downloadUrl) {
-      this.toast.showMessage(this.texts["MESSAGES.ERROR_WHILE_DOWNLOADING"], "danger");
-      this.loader.stopLoader();
-      return;
-    }
+    // if (res.result && !res.result.data && !res.result.data.downloadUrl) {
+    //   this.toast.showMessage(this.texts["MESSAGES.ERROR_WHILE_DOWNLOADING"], "danger");
+    //   this.loader.stopLoader();
+    //   return;
+    // }
 
     let fileName = this.utils.generateFileName(this.name);
     fileName = fileName + this.extension;
 
     const ft = this.fileTransfer.create();
-    ft.download(res.result.data.downloadUrl, this.directoryPath() + fileName)
-      .then(
-        (res) => {
-          share ? this.share(res.nativeURL) : this.toast.showMessage(this.texts["MESSAGES.SUCCESSFULLY DOWNLOADED"]);
-        },
-        (err) => {
-          console.log(err);
-          this.toast.showMessage(this.texts["MESSAGES.ERROR_WHILE_DOWNLOADING"], "danger");
-          this.requestPermission();
-        }
-      )
-      .finally(() => {
-        this.interface == "simple" ? this.popoverController.dismiss() : null; // close the overlay for Simple UI
-        this.loader.stopLoader();
-      });
+    // ft.download(res.result.data.downloadUrl, this.directoryPath() + fileName)
+    //   .then(
+    //     (res) => {
+    //       share ? this.share(res.nativeURL) : this.toast.showMessage(this.texts["MESSAGES.SUCCESSFULLY DOWNLOADED"]);
+    //     },
+    //     (err) => {
+    //       console.log(err);
+    //       this.toast.showMessage(this.texts["MESSAGES.ERROR_WHILE_DOWNLOADING"], "danger");
+    //       this.requestPermission();
+    //     }
+    //   )
+    //   .finally(() => {
+    //     this.interface == "simple" ? this.popoverController.dismiss() : null; // close the overlay for Simple UI
+    //     this.loader.stopLoader();
+    //   });
   }
 
   requestPermission() {
