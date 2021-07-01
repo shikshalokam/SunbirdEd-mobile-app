@@ -1,18 +1,25 @@
 import { Inject, Injectable, OnDestroy } from '@angular/core';
-import { Environment, ID, InteractSubtype, InteractType, PageId, ImpressionType, ImpressionSubtype } from './telemetry-constants';
-import { Events, PopoverController } from '@ionic/angular';
-import { GenericAppConfig, PreferenceKey, EventTopics } from '../app/app.constant';
-import { TelemetryGeneratorService } from './telemetry-generator.service';
+import { animationGrowInTopRight } from '@app/app/animations/animation-grow-in-top-right';
+import { animationShrinkOutTopRight } from '@app/app/animations/animation-shrink-out-top-right';
+import { UpgradePopoverComponent } from '@app/app/components/popups';
+import { JoyfulThemePopupComponent } from '@app/app/components/popups/joyful-theme-popup/joyful-theme-popup.component';
+import { SbTutorialPopupComponent } from '@app/app/components/popups/sb-tutorial-popup/sb-tutorial-popup.component';
+import { NewExperiencePopupComponent } from '@app/app/components/popups/new-experience-popup/new-experience-popup.component';
+import { EventParams } from '@app/app/components/sign-in-card/event-params.interface';
+import { AppVersion } from '@ionic-native/app-version/ngx';
+import { PopoverController } from '@ionic/angular';
+import { Events } from '@app/util/events';
+import { Observable, Observer } from 'rxjs';
 import {
     AuthService, Course, Framework, FrameworkCategoryCodesGroup, FrameworkDetailsRequest, FrameworkService,
-    OAuthSession, Profile, ProfileService, ProfileType, SharedPreferences
+    OAuthSession, Profile, ProfileService, ProfileSession, ProfileType, SharedPreferences
 } from 'sunbird-sdk';
-import { UtilityService } from './utility-service';
-import { ProfileConstants } from '../app/app.constant';
-import { Observable, Observer } from 'rxjs';
+import { AppThemes, GenericAppConfig, PreferenceKey, ProfileConstants } from '../app/app.constant';
 import { PermissionAsked } from './android-permissions/android-permission';
-import { UpgradePopoverComponent } from '@app/app/components/popups';
-import { AppVersion } from '@ionic-native/app-version/ngx';
+import { Environment, ID, InteractSubtype, InteractType, PageId } from './telemetry-constants';
+import { TelemetryGeneratorService } from './telemetry-generator.service';
+import { UtilityService } from './utility-service';
+import { YearOfBirthPopupComponent } from '@app/app/components/popups/year-of-birth-popup/year-of-birth-popup.component';
 
 @Injectable({
     providedIn: 'root'
@@ -45,9 +52,9 @@ export class AppGlobalService implements OnDestroy {
     locationConfig: Array<any> = [];
 
     /**
-     * This property stores the dial code  configuration at the app level for non standard QR Code
+     * This property stores the Supported Url configuration at the app level for non standard deeplinks
      */
-    dailCodeConfig?: RegExp;
+    supportedUrlRegexConfig?: any;
 
     /**
      * This property stores the organization at the app level for a particular app session
@@ -56,6 +63,7 @@ export class AppGlobalService implements OnDestroy {
     courseFrameworkId: string;
 
     currentPageId: string;
+    pdfPlayerConfiguratiion: boolean;
 
     guestUserProfile: Profile;
     isGuestUser = false;
@@ -74,6 +82,15 @@ export class AppGlobalService implements OnDestroy {
     private isJoinTraningOnboarding: any;
     private _signinOnboardingLoader: any;
     private _skipCoachScreenForDeeplink = false;
+    private _preSignInData: any;
+    private _generateCourseCompleteTelemetry = false;
+    private _generateCourseUnitCompleteTelemetry = false;
+    private _showCourseCompletePopup = false;
+    private _formConfig: any;
+    private _selectedActivityCourseId: string;
+    private _redirectUrlAfterLogin: string;
+    private _isNativePopupVisible: boolean;
+    private _isDiscoverBackEnabled: boolean = false;
 
     constructor(
         @Inject('PROFILE_SERVICE') private profile: ProfileService,
@@ -147,6 +164,15 @@ export class AppGlobalService implements OnDestroy {
         return name;
     }
 
+
+    setpdfPlayerconfiguration(config) {
+        this.pdfPlayerConfiguratiion = config;
+    }
+
+    getPdfPlayerConfiguration() {
+        return this.pdfPlayerConfiguratiion;
+    }
+
     /**
      * This method stores the list of courses enrolled by user, and is updated every time
      * getEnrolledCourses is called.
@@ -194,7 +220,7 @@ export class AppGlobalService implements OnDestroy {
      * This method stores the location config, for a particular session of the app
      */
     setLocationConfig(locationConfig: Array<any>) {
-        this.courseFilterConfig = locationConfig;
+        this.locationConfig = locationConfig;
     }
 
     /**
@@ -205,17 +231,17 @@ export class AppGlobalService implements OnDestroy {
     }
 
     /**
-     * This method returns the cached dial code config
+     * This method returns the cached Supported url regex config
      */
-    getCachedDialCodeConfig(): RegExp | undefined {
-        return this.dailCodeConfig;
+    getCachedSupportedUrlRegexConfig(): any {
+        return this.supportedUrlRegexConfig;
     }
 
     /**
-     * This method stores the dial code config, for a non standard dial code
+     * This method stores the Supported url regex config, for a non standard supported url regex
      */
-    setDailCodeConfig(dialCodeConfig: RegExp) {
-        this.dailCodeConfig = dialCodeConfig;
+    setSupportedUrlRegexConfig(supportedUrlRegexConfig: any) {
+        this.supportedUrlRegexConfig = supportedUrlRegexConfig;
     }
 
     /**
@@ -322,10 +348,10 @@ export class AppGlobalService implements OnDestroy {
             });
         this.utilityService.getBuildConfigValue(GenericAppConfig.CONTENT_STREAMING_ENABLED)
             .then(response => {
-                this.CONTENT_STREAMING_ENABLED = response === 'true' ? true : false;
+                this.CONTENT_STREAMING_ENABLED =  true
             })
             .catch(error => {
-                this.CONTENT_STREAMING_ENABLED = false;
+                this.CONTENT_STREAMING_ENABLED = true;
             });
 
         this.utilityService.getBuildConfigValue(GenericAppConfig.DISPLAY_ONBOARDING_CATEGORY_PAGE)
@@ -359,54 +385,60 @@ export class AppGlobalService implements OnDestroy {
         }
     }
 
-    private initValues() {
+    private initValues(eventParams?: EventParams) {
         this.readConfig();
-
-        this.authService.getSession().toPromise().then((session) => {
-            if (!session) {
-                this.session = session;
-                this.getGuestUserInfo();
-            } else {
-                this.guestProfileType = undefined;
-                this.isGuestUser = false;
-                this.session = session;
-            }
-            this.getCurrentUserProfile();
-        });
-
+        /* to make sure there are no duplicate calls to getSession and profile setting
+         * from login flow only eventParams are received via events
+         */
+        if (!eventParams || (eventParams && !eventParams.skipSession)) {
+            this.authService.getSession().toPromise().then((session) => {
+                if (!session) {
+                    this.isGuestUser = true;
+                    this.session = session;
+                    this.getGuestUserInfo();
+                } else {
+                    this.guestProfileType = undefined;
+                    this.isGuestUser = false;
+                    this.session = session;
+                }
+                this.getCurrentUserProfile(eventParams);
+            });
+        }
         this.preferences.getString(PreferenceKey.IS_ONBOARDING_COMPLETED).toPromise()
             .then((result) => {
                 this.isOnBoardingCompleted = (result === 'true') ? true : false;
             });
     }
 
-    private getCurrentUserProfile() {
-        this.profile.getActiveSessionProfile({ requiredFields: ProfileConstants.REQUIRED_FIELDS }).toPromise()
-            .then((response: Profile) => {
-                this.guestUserProfile = response;
-                if (this.guestUserProfile.syllabus && this.guestUserProfile.syllabus.length > 0) {
-                    this.getFrameworkDetails(this.guestUserProfile.syllabus[0])
-                        .then((categories) => {
-                            categories.forEach(category => {
-                                this.frameworkData[category.code] = category;
-                            });
+    private getCurrentUserProfile(eventParams?: EventParams) {
+        if (!eventParams || (eventParams && !eventParams.skipProfile)) {
+            this.profile.getActiveSessionProfile({ requiredFields: ProfileConstants.REQUIRED_FIELDS }).toPromise()
+                .then((response: Profile) => {
+                    this.guestUserProfile = response;
+                    if (this.guestUserProfile.syllabus && this.guestUserProfile.syllabus.length > 0) {
+                        this.getFrameworkDetails(this.guestUserProfile.syllabus[0])
+                            .then((categories) => {
+                                categories.forEach(category => {
+                                    this.frameworkData[category.code] = category;
+                                });
 
-                            this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
-                        }).catch(() => {
-                            this.frameworkData = [];
-                            this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
-                        });
-                    this.getProfileSettingsStatus();
-                } else {
-                    this.frameworkData = [];
+                                this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
+                            }).catch(() => {
+                                this.frameworkData = [];
+                                this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
+                            });
+                        this.getProfileSettingsStatus();
+                    } else {
+                        this.frameworkData = [];
+                        this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
+                    }
+                })
+                .catch((error) => {
+                    console.error(error);
+                    this.guestUserProfile = undefined;
                     this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
-                }
-            })
-            .catch((error) => {
-                console.error(error);
-                this.guestUserProfile = undefined;
-                this.event.publish(AppGlobalService.PROFILE_OBJ_CHANGED);
-            });
+                });
+        }
     }
 
     // Remove this method after refactoring formandframeworkutil.service
@@ -435,6 +467,12 @@ export class AppGlobalService implements OnDestroy {
                             this.guestProfileType = ProfileType.STUDENT;
                         } else if (val === ProfileType.TEACHER) {
                             this.guestProfileType = ProfileType.TEACHER;
+                        } else if (val === ProfileType.OTHER) {
+                            this.guestProfileType = ProfileType.OTHER;
+                        } else if (val === ProfileType.ADMIN) {
+                            this.guestProfileType = ProfileType.ADMIN;
+                        } else if (val === ProfileType.PARENT) {
+                            this.guestProfileType = ProfileType.PARENT;
                         }
                         this.isGuestUser = true;
                         resolve(this.guestProfileType);
@@ -500,7 +538,7 @@ export class AppGlobalService implements OnDestroy {
                 paramsMap['isProfileSettingsCompleted'] = isOnBoardingCompleted;
             }
             const profileType = this.getGuestUserType();
-            if (profileType === ProfileType.TEACHER) {
+            if (profileType === ProfileType.TEACHER || profileType === ProfileType.OTHER) {
                 switch (pageId) {
                     case PageId.LIBRARY: {
                         paramsMap['isSignInCardConfigEnabled'] = this.DISPLAY_SIGNIN_FOOTER_CARD_IN_LIBRARY_TAB_FOR_TEACHER;
@@ -710,6 +748,86 @@ export class AppGlobalService implements OnDestroy {
         this._skipCoachScreenForDeeplink = value;
     }
 
+    get preSignInData() {
+        return this._preSignInData;
+    }
+    set preSignInData(value) {
+        this._preSignInData = value;
+    }
+
+    get generateCourseCompleteTelemetry() {
+        return this._generateCourseCompleteTelemetry;
+    }
+    set generateCourseCompleteTelemetry(value) {
+        this._generateCourseCompleteTelemetry = value;
+    }
+
+    get generateCourseUnitCompleteTelemetry() {
+        return this._generateCourseUnitCompleteTelemetry;
+    }
+    set generateCourseUnitCompleteTelemetry(value) {
+        this._generateCourseUnitCompleteTelemetry = value;
+    }
+
+    get showCourseCompletePopup() {
+        return this._showCourseCompletePopup;
+    }
+
+    set showCourseCompletePopup(value) {
+        this._showCourseCompletePopup = value;
+    }
+
+    get formConfig() {
+        return this._formConfig;
+    }
+
+    set formConfig(value) {
+        this._formConfig = value;
+    }
+
+    get selectedActivityCourseId() {
+        return this._selectedActivityCourseId;
+    }
+
+    set selectedActivityCourseId(value) {
+        this._selectedActivityCourseId = value;
+    }
+
+    get redirectUrlAfterLogin() {
+        return this._redirectUrlAfterLogin;
+    }
+
+    set redirectUrlAfterLogin(value) {
+        this._redirectUrlAfterLogin = value;
+    }
+
+    get isNativePopupVisible() {
+        return this._isNativePopupVisible;
+    }
+
+    set isNativePopupVisible(value) {
+        this._isNativePopupVisible = value;
+    }
+
+    get isDiscoverBackEnabled() {
+        return this._isDiscoverBackEnabled;
+    }
+
+    set isDiscoverBackEnabled(value) {
+        this._isDiscoverBackEnabled = value;
+    }
+
+    setNativePopupVisible(value, timeOut?) {
+        if (timeOut) {
+            setTimeout(() => {
+                this._isNativePopupVisible = value;
+            }, timeOut);
+        } else {
+            this._isNativePopupVisible = value;
+        }
+    }
+
+
     // This method is used to reset if any quiz content data is previously saved before Joining a Training
     // So it wont affect in the exterId verification page
     resetSavedQuizContent() {
@@ -723,22 +841,89 @@ export class AppGlobalService implements OnDestroy {
         }
     }
 
-    async showCouchMarkScreen() {
+    async showTutorialScreen() {
         if (this.skipCoachScreenForDeeplink) {
             this.skipCoachScreenForDeeplink = false;
         } else {
-            const coachMarkSeen = await this.preferences.getBoolean(PreferenceKey.COACH_MARK_SEEN).toPromise();
-            if (!coachMarkSeen) {
+            const tutorialScreen = await this.preferences.getBoolean(PreferenceKey.COACH_MARK_SEEN).toPromise();
+            if (!tutorialScreen) {
                 const appLabel = await this.appVersion.getAppName();
-                this.event.publish(EventTopics.COACH_MARK_SEEN, { showWalkthroughBackDrop: true, appName: appLabel });
-                this.telemetryGeneratorService.generateImpressionTelemetry(
-                    ImpressionType.VIEW,
-                    ImpressionSubtype.QR_SCAN_WALKTHROUGH,
-                    PageId.LIBRARY,
-                    Environment.ONBOARDING
-                );
+                const tutorialPopover = await this.popoverCtrl.create({
+                    component: SbTutorialPopupComponent,
+                    componentProps: { appLabel },
+                    showBackdrop: true,
+                    backdropDismiss: false,
+                    enterAnimation: animationGrowInTopRight,
+                    leaveAnimation: animationShrinkOutTopRight
+                });
+                tutorialPopover.present();
                 this.preferences.putBoolean(PreferenceKey.COACH_MARK_SEEN, true).toPromise().then();
             }
+        }
+    }
+
+    async showJoyfulPopup() {
+        if (this.skipCoachScreenForDeeplink) {
+            this.skipCoachScreenForDeeplink = false;
+        } else {
+            const isPopupDisplayed = await this.preferences.getBoolean(PreferenceKey.IS_JOYFUL_THEME_POPUP_DISPLAYED).toPromise();
+            if (!isPopupDisplayed) {
+                const appLabel = await this.appVersion.getAppName();
+                const newThemePopover = await this.popoverCtrl.create({
+                    component: JoyfulThemePopupComponent,
+                    componentProps: { appLabel },
+                    backdropDismiss: false,
+                    showBackdrop: true,
+                    cssClass: 'sb-new-theme-popup'
+                });
+                newThemePopover.present();
+                this.preferences.putBoolean(PreferenceKey.IS_JOYFUL_THEME_POPUP_DISPLAYED, true).toPromise().then();
+            }
+            this.preferences.putBoolean(PreferenceKey.COACH_MARK_SEEN, true).toPromise().then();
+        }
+    }
+
+    async showNewTabsSwitchPopup() {
+        const isPopupDisplayed = await this.preferences.getString(PreferenceKey.SELECTED_SWITCHABLE_TABS_CONFIG).toPromise();
+        if (!isPopupDisplayed) {
+            const appLabel = await this.appVersion.getAppName();
+            const newThemePopover = await this.popoverCtrl.create({
+                component: NewExperiencePopupComponent,
+                componentProps: { appLabel },
+                backdropDismiss: false,
+                showBackdrop: true,
+                cssClass: 'sb-switch-new-experience-popup'
+            });
+            newThemePopover.present();
+        }
+    }
+
+    async getActiveProfileUid() {
+        let userId = '';
+        try {
+            const activeProfileSession: ProfileSession = await this.profile.getActiveProfileSession().toPromise();
+
+            userId = activeProfileSession.uid;
+            if (activeProfileSession.managedSession) {
+                userId = activeProfileSession.managedSession.uid;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
+        return userId;
+    }
+
+    async showYearOfBirthPopup(userProfile) {
+        if (userProfile && !userProfile.managedBy && !userProfile.dob) {
+            const newThemePopover = await this.popoverCtrl.create({
+                component: YearOfBirthPopupComponent,
+                componentProps: {   },
+                backdropDismiss: false,
+                showBackdrop: true,
+                cssClass: 'year-of-birth-popup'
+            });
+            newThemePopover.present();
         }
     }
 

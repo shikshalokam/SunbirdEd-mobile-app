@@ -1,5 +1,6 @@
+import { Router } from '@angular/router';
 import { Injectable, Inject } from '@angular/core';
-import { ProfileService, UserFeed } from 'sunbird-sdk';
+import { ProfileService } from 'sunbird-sdk';
 import { AppGlobalService } from './app-global-service.service';
 import { Observable } from 'rxjs';
 import { PopoverController } from '@ionic/angular';
@@ -24,7 +25,8 @@ export class ExternalIdVerificationService {
         private formAndFrameworkUtilService: FormAndFrameworkUtilService,
         private splaschreenDeeplinkActionHandlerDelegate: SplaschreenDeeplinkActionHandlerDelegate,
         private commonUtilService: CommonUtilService,
-        private localCourseService: LocalCourseService
+        private localCourseService: LocalCourseService,
+        private router: Router
     ) {
         this.isCustodianUser$ = this.profileService.isDefaultChannelProfile().pipe(
             map((isDefaultChannelProfile) => isDefaultChannelProfile) as any
@@ -33,39 +35,61 @@ export class ExternalIdVerificationService {
 
     async showExternalIdVerificationPopup() {
         this.appGlobalService.closeSigninOnboardingLoader();
+        if (this.appGlobalService.redirectUrlAfterLogin) {
+            this.router.navigate(
+                [this.appGlobalService.redirectUrlAfterLogin],
+                {
+                    state: {
+                        fromRegistrationFlow: true
+                    },
+                    replaceUrl: true
+                }
+            );
+            this.appGlobalService.redirectUrlAfterLogin = '';
+        }
         if (await this.checkQuizContent()) {
             return;
         }
-        if (!this.commonUtilService.networkInfo.isNetworkAvailable) {
+        const profileSession = await this.profileService.getActiveProfileSession().toPromise();
+        if (profileSession.managedSession) {
             return;
         }
         const session = await this.appGlobalService.authService.getSession().toPromise();
+        if (!this.commonUtilService.networkInfo.isNetworkAvailable || !session) {
+            return;
+        }
         const isCustodianUser = await this.isCustodianUser$.toPromise();
         const serverProfile = await this.profileService.getServerProfilesDetails({
             userId: session.userToken,
             requiredFields: ProfileConstants.REQUIRED_FIELDS,
         }).toPromise();
-        const tenantSpecificMessages: any = await this.formAndFrameworkUtilService.
-            getTenantSpecificMessages(serverProfile.rootOrg.rootOrgId);
-        if (session && isCustodianUser) {
+        if (isCustodianUser) {
             await this.profileService.getUserFeed().toPromise()
-                .then(async (userFeed: UserFeed[]) => {
-                    if (userFeed[0] && (userFeed[0].category).toLowerCase() === 'orgmigrationaction') {
-                        let popupLabels = {};
-                        if (tenantSpecificMessages && tenantSpecificMessages.length && tenantSpecificMessages[0].range
-                            && tenantSpecificMessages[0].range.length) {
-                            popupLabels = tenantSpecificMessages[0].range[0];
-                        }
-                        const popover = await this.popoverCtrl.create({
-                            component: TeacherIdVerificationComponent,
-                            backdropDismiss: false,
-                            cssClass: 'popover-alert popoverPosition',
-                            componentProps: {
-                                userFeed: userFeed[0], tenantMessages: popupLabels
+                .then(async (userFeed: any) => {
+                        if (userFeed[0] && (userFeed[0].category).toLowerCase() === 'orgmigrationaction') {
+                            let popupLabels = {};
+                            let tenantSpecificMessages: any;
+                            if (userFeed[0].data.prospectChannelsIds.length > 1 || !userFeed[0].data.prospectChannelsIds[0].id) {
+                                 tenantSpecificMessages = await this.formAndFrameworkUtilService.
+                                getTenantSpecificMessages(serverProfile.rootOrg.rootOrgId);
+                            } else {
+                                tenantSpecificMessages = await this.formAndFrameworkUtilService.
+                                getTenantSpecificMessages(userFeed[0].data.prospectChannelsIds[0].id);
                             }
-                        });
-                        await popover.present();
-                    }
+                            if (tenantSpecificMessages && tenantSpecificMessages.length && tenantSpecificMessages[0].range
+                                && tenantSpecificMessages[0].range.length) {
+                                popupLabels = tenantSpecificMessages[0].range[0];
+                            }
+                            const popover = await this.popoverCtrl.create({
+                                component: TeacherIdVerificationComponent,
+                                backdropDismiss: false,
+                                cssClass: 'popover-alert popoverPosition',
+                                componentProps: {
+                                    userFeed: userFeed[0], tenantMessages: popupLabels
+                                }
+                            });
+                            await popover.present();
+                        }
                 })
                 .catch((error) => {
                     console.log('error', error);

@@ -1,11 +1,13 @@
 import { AppVersion } from '@ionic-native/app-version/ngx';
 import { SocialSharing } from '@ionic-native/social-sharing/ngx';
-import { CommonUtilService, UtilityService, TelemetryGeneratorService } from '../../../../services';
+import {CommonUtilService, UtilityService, TelemetryGeneratorService, AndroidPermissionsService, AppGlobalService} from '../../../../services';
 import { DeviceInfo } from 'sunbird-sdk';
-import { SbAppSharePopupComponent } from './sb-app-share-popup.component';
-import { PopoverController, Platform, NavParams } from '@ionic/angular';
+import { SbAppSharePopupComponent } from '@app/app/components/popups';
+import {PopoverController, Platform, NavParams, ToastController} from '@ionic/angular';
 import { ImpressionType, PageId, Environment, ID, InteractType, InteractSubtype } from '@app/services';
-import { ShareMode, ShareItemType } from '@app/app/app.constant';
+import { ShareMode } from '@app/app/app.constant';
+import {Router} from '@angular/router';
+import {of} from 'rxjs';
 
 
 describe('SbAppSharePopupComponent', () => {
@@ -13,15 +15,13 @@ describe('SbAppSharePopupComponent', () => {
     const mockPopoverCtrl: Partial<PopoverController> = {
         dismiss: jest.fn()
     };
-    const mockDeviceInfo: Partial<DeviceInfo> = {
-        getDeviceID: jest.fn(() => '0123456789')
-    };
     const mockPlatform: Partial<Platform> = {};
     const mocksocialSharing: Partial<SocialSharing> = {
         share: jest.fn()
     };
     const mockCommonUtilService: Partial<CommonUtilService> = {
-        showToast: jest.fn()
+        showToast: jest.fn(),
+        getGivenPermissionStatus: jest.fn(() => Promise.resolve({ hasPermission : true} as any))
     };
     const mockUtilityService: Partial<UtilityService> = {
         exportApk: jest.fn(() => Promise.resolve('filePath')),
@@ -46,10 +46,18 @@ describe('SbAppSharePopupComponent', () => {
         generateInteractTelemetry: jest.fn(),
         generateImpressionTelemetry: jest.fn()
     };
+    const mockPermissionService: Partial<AndroidPermissionsService> = {
+        checkPermissions: jest.fn()
+    };
+    const mockRouter: Partial<Router> = {
+        navigate: jest.fn()
+    };
+    const mockAppGlobalService: Partial<AppGlobalService> = {
+        setNativePopupVisible: jest.fn()
+    };
 
     beforeAll(() => {
         sbAppSharePopupComponent = new SbAppSharePopupComponent(
-            mockDeviceInfo as DeviceInfo,
             mockPopoverCtrl as PopoverController,
             mocksocialSharing as SocialSharing,
             mockPlatform as Platform,
@@ -57,6 +65,7 @@ describe('SbAppSharePopupComponent', () => {
             mockAppversion as AppVersion,
             mockNavParams as NavParams,
             mockTelemetryGeneratorService as TelemetryGeneratorService,
+            mockPermissionService as AndroidPermissionsService,
             mockCommonUtilService as CommonUtilService);
     });
 
@@ -66,6 +75,19 @@ describe('SbAppSharePopupComponent', () => {
 
     it('should create a instance of sbAppSharePopupComponent', () => {
         expect(sbAppSharePopupComponent).toBeTruthy();
+    });
+
+    it('should create a instance of sbAppSharePopupComponent', () => {
+        // arrange
+        // act
+        sbAppSharePopupComponent.generateInteractTelemetry(InteractType.TOUCH, InteractSubtype.CLOSE_CLICKED);
+        // assert
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.TOUCH,
+            InteractSubtype.CLOSE_CLICKED,
+            PageId.SHARE_APP_POPUP,
+            Environment.SETTINGS
+        );
     });
 
     describe('exportApk()', () => {
@@ -148,7 +170,36 @@ describe('SbAppSharePopupComponent', () => {
                 PageId.SHARE_APP_POPUP,
                 Environment.SETTINGS);
             expect(sbAppSharePopupComponent.shareUrl).toEqual(
-                'https://play.google.com/store/apps/details?id=org.sunbird.app&referrer=utm_source%3D0123456789%26utm_campaign%3Dshare_app');
+                'https://play.google.com/store/apps/details?id=org.sunbird.' +
+                'app&referrer=utm_source%3Dmobile%26utm_campaign%3Dshare_app');
+            done();
+        }, 0);
+    });
+
+    it('should not brek if getAPKSize() gives error response', (done) => {
+        // arrange
+        const unsubscribeFn = jest.fn();
+        mockPlatform.backButton = {
+            subscribeWithPriority: jest.fn((_, fn) => fn()),
+        } as any;
+        sbAppSharePopupComponent.backButtonFunc = {
+            unsubscribe: unsubscribeFn
+        } as any;
+
+        mockUtilityService.getApkSize = jest.fn(() => Promise.reject({}));
+        // act
+        sbAppSharePopupComponent.ngOnInit();
+        // assert
+        expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
+        expect(unsubscribeFn).toHaveBeenCalled();
+        setTimeout(() => {
+            expect(mockTelemetryGeneratorService.generateImpressionTelemetry).toHaveBeenCalledWith(
+                ImpressionType.VIEW, '',
+                PageId.SHARE_APP_POPUP,
+                Environment.SETTINGS);
+            expect(sbAppSharePopupComponent.shareUrl).toEqual(
+                'https://play.google.com/store/apps/details?id=org.sunbird.' +
+                'app&referrer=utm_source%3Dmobile%26utm_campaign%3Dshare_app');
             done();
         }, 0);
     });
@@ -168,6 +219,9 @@ describe('SbAppSharePopupComponent', () => {
     it('should dismiss popover on closepopover', () => {
         // arrange
         mockPopoverCtrl.dismiss = jest.fn();
+        jest.spyOn(sbAppSharePopupComponent, 'generateInteractTelemetry').mockImplementation(() => {
+            return 0;
+        });
         // act
         sbAppSharePopupComponent.closePopover();
         // assert
@@ -192,65 +246,339 @@ describe('SbAppSharePopupComponent', () => {
                 undefined, undefined, undefined, undefined,
                 ID.SHARE_CONFIRM);
             expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-                InteractType.TOUCH, InteractSubtype.SHARE_APP_INITIATED,
-                PageId.SETTINGS,
-                Environment.SETTINGS);
-            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-                InteractType.OTHER, InteractSubtype.SHARE_APP_SUCCESS,
-                PageId.SETTINGS,
-                Environment.SETTINGS);
+                'share', '',
+                Environment.SETTINGS,
+                PageId.SHARE_APP_POPUP,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                ID.SHARE_CONFIRM);
             expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
             expect(mockCommonUtilService.translateMessage).toHaveBeenCalled();
             done();
         }, 0);
     });
 
-    it('should call sharecontent on shareFile', () => {
+    it('should call sharecontent on shareFile', (done) => {
         // arrange
         sbAppSharePopupComponent.exportApk = jest.fn(() => Promise.resolve());
         mockPopoverCtrl.dismiss = jest.fn();
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: true}));
+        mockCommonUtilService.translateMessage = jest.fn();
+        const presentFN = jest.fn(() => Promise.resolve());
+
+        mockCommonUtilService.buildPermissionPopover = jest.fn(() => Promise.resolve({
+            present: presentFN
+        }));
         // act
         sbAppSharePopupComponent.shareFile();
         // assert
-        expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(ShareMode.SEND,
-            '',
-            Environment.SETTINGS,
-            PageId.SHARE_APP_POPUP,
-            undefined, undefined, undefined, undefined,
-            ID.SHARE_CONFIRM);
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-            InteractType.TOUCH, InteractSubtype.SHARE_APP_INITIATED,
-            PageId.SETTINGS,
-            Environment.SETTINGS);
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-            InteractType.OTHER, InteractSubtype.SHARE_APP_SUCCESS,
-            PageId.SETTINGS,
-            Environment.SETTINGS);
+        setTimeout(() => {
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(ShareMode.SEND,
+                '',
+                Environment.SETTINGS,
+                PageId.SHARE_APP_POPUP,
+                undefined, undefined, undefined, undefined,
+                ID.SHARE_CONFIRM);
+            expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
+            done();
+        }, 0);
     });
 
-    it('should call sharecontent on saveFile', () => {
+    it('should call permission popup on shareFile if not given', (done) => {
+        sbAppSharePopupComponent.exportApk = jest.fn(() => Promise.resolve());
+        mockPopoverCtrl.dismiss = jest.fn();
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockCommonUtilService.translateMessage = jest.fn();
+        const presentFN = jest.fn(() => Promise.resolve());
+
+        mockCommonUtilService.buildPermissionPopover = jest.fn(() => Promise.resolve({
+            present: presentFN
+        }));
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            expect(mockCommonUtilService.buildPermissionPopover).toHaveBeenCalled();
+            expect(presentFN).toHaveBeenCalled();
+            done();
+        }, 0);
+    });
+
+    it('should call sharecontent on saveFile', (done) => {
         // arrange
         sbAppSharePopupComponent.exportApk = jest.fn(() => Promise.resolve());
         mockPopoverCtrl.dismiss = jest.fn();
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: true}));
+        mockCommonUtilService.translateMessage = jest.fn();
+        const presentFN = jest.fn(() => Promise.resolve());
+
+        mockCommonUtilService.buildPermissionPopover = jest.fn(() => Promise.resolve({
+            present: presentFN
+        })) as any;
         // act
         sbAppSharePopupComponent.saveFile();
         // assert
-        expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(ShareMode.SAVE,
-            '',
-            Environment.SETTINGS,
-            PageId.SHARE_APP_POPUP,
-            undefined, undefined, undefined, undefined,
-            ID.SHARE_CONFIRM);
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-            InteractType.TOUCH, InteractSubtype.SHARE_APP_INITIATED,
-            PageId.SETTINGS,
-            Environment.SETTINGS);
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
-            InteractType.OTHER, InteractSubtype.SHARE_APP_SUCCESS,
-            PageId.SETTINGS,
-            Environment.SETTINGS);
+        setTimeout(() => {
+            expect(mockPopoverCtrl.dismiss).toHaveBeenCalled();
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(ShareMode.SAVE,
+                '',
+                Environment.SETTINGS,
+                PageId.SHARE_APP_POPUP,
+                undefined, undefined, undefined, undefined,
+                ID.SHARE_CONFIRM);
+            expect(mockCommonUtilService.getGivenPermissionStatus).toHaveBeenCalled();
+            done();
+        }, 0);
+    });
+    it('should call permission popup on saveFile if not given', (done) => {
+        // arrange
+        sbAppSharePopupComponent.exportApk = jest.fn(() => Promise.resolve());
+        mockPopoverCtrl.dismiss = jest.fn();
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockCommonUtilService.translateMessage = jest.fn();
+        const presentFN = jest.fn(() => Promise.resolve());
+
+        mockCommonUtilService.buildPermissionPopover = jest.fn(() => Promise.resolve({
+            present: presentFN
+        }));
+        // act
+        sbAppSharePopupComponent.saveFile();
+        // assert
+        setTimeout(() => {
+            expect(mockCommonUtilService.buildPermissionPopover).toHaveBeenCalled();
+            expect(presentFN).toHaveBeenCalled();
+            done();
+        }, 0);
+    });
+
+    it('should show Error Toast in share File method if permission is given always denied and reject false', (done) => {
+        // arrange
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {isPermissionAlwaysDenied: true}));
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        mockNavParams.get = jest.fn();
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenNthCalledWith(
+                1,
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenNthCalledWith(
+                2,
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            done();
+        }, 0);
+    });
+
+    it('should show Error Toast in save File method if permission is given always denied and reject false', (done) => {
+        // arrange
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {isPermissionAlwaysDenied: true}));
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        mockNavParams.get = jest.fn();
+        // act
+        sbAppSharePopupComponent.saveFile();
+        // assert
+        setTimeout(() => {
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenNthCalledWith(
+                1,
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenNthCalledWith(
+                2,
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            done();
+        }, 0);
+    });
+
+    it('should call storage permission pop-up and NOT_NOW clicked ', (done) => {
+        // arrange
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockPopoverCtrl.dismiss = jest.fn();
+
+        mockCommonUtilService.translateMessage = jest.fn(v => v);
+        mockCommonUtilService.buildPermissionPopover = jest.fn(async (callback) => {
+            await callback(mockCommonUtilService.translateMessage('NOT_NOW'));
+            return {
+                present: jest.fn(() => Promise.resolve())
+            };
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        // act
+        sbAppSharePopupComponent.saveFile();
+        // assert
+        setTimeout(() => {
+            // assert
+            expect(mockCommonUtilService.buildPermissionPopover).toHaveBeenCalled();
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+                InteractType.TOUCH,
+                InteractSubtype.NOT_NOW_CLICKED,
+                Environment.SETTINGS,
+                PageId.PERMISSION_POPUP
+            );
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenCalledWith(
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            done();
+        }, 0);
+    });
+
+    it('should call storage permission pop-up and ALLOW clicked and provide has permission false', (done) => {
+        // arrange
+        mockPermissionService.requestPermission = jest.fn(() => of({hasPermission: false}));
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockPopoverCtrl.dismiss = jest.fn();
+
+        mockCommonUtilService.translateMessage = jest.fn(v => v);
+        mockCommonUtilService.buildPermissionPopover = jest.fn(async (callback) => {
+            await callback(mockCommonUtilService.translateMessage('ALLOW'));
+            return {
+                present: jest.fn(() => Promise.resolve())
+            };
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            // assert
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+                InteractType.TOUCH,
+                InteractSubtype.ALLOW_CLICKED,
+                Environment.SETTINGS,
+                PageId.PERMISSION_POPUP
+            );
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenCalledWith(
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            done();
+        }, 0);
+    });
+
+    it('should not show any toast if not of the button is clicked and popup is dismissed', (done) => {
+        // arrange
+        mockPermissionService.requestPermission = jest.fn(() => of({hasPermission: false}));
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockPopoverCtrl.dismiss = jest.fn();
+
+        mockCommonUtilService.translateMessage = jest.fn(v => v);
+        mockCommonUtilService.buildPermissionPopover = jest.fn(async (callback) => {
+            await callback(mockCommonUtilService.translateMessage('ALLOW1'));
+            return {
+                present: jest.fn(() => Promise.resolve())
+            };
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            // assert
+            expect(mockCommonUtilService.showSettingsPageToast).not.toHaveBeenCalled();
+            done();
+        }, 0);
+    });
+
+    it('should call storage permission pop-up and ALLOW clicked and provide has permission true ', (done) => {
+        // arrange
+        mockPermissionService.requestPermission = jest.fn(() => of({hasPermission: true}));
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockPopoverCtrl.dismiss = jest.fn();
+
+        mockCommonUtilService.translateMessage = jest.fn(v => v);
+        mockCommonUtilService.buildPermissionPopover = jest.fn(async (callback) => {
+            await callback(mockCommonUtilService.translateMessage('ALLOW'));
+            return {
+                present: jest.fn(() => Promise.resolve())
+            };
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            // assert
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+                InteractType.TOUCH,
+                InteractSubtype.ALLOW_CLICKED,
+                Environment.SETTINGS,
+                PageId.PERMISSION_POPUP
+            );
+            done();
+        }, 0);
+    });
+
+    it('should call storage permission pop-up and ALLOW clicked and provide has permission true ', (done) => {
+        // arrange
+        mockPermissionService.requestPermission = jest.fn(() => of({isPermissionAlwaysDenied: true}));
+        mockCommonUtilService.getGivenPermissionStatus = jest.fn(() => Promise.resolve(
+            {hasPermission: false}));
+        mockPopoverCtrl.dismiss = jest.fn();
+
+        mockCommonUtilService.translateMessage = jest.fn(v => v);
+        mockCommonUtilService.buildPermissionPopover = jest.fn(async (callback) => {
+            await callback(mockCommonUtilService.translateMessage('ALLOW'));
+            return {
+                present: jest.fn(() => Promise.resolve())
+            };
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        mockCommonUtilService.showSettingsPageToast = jest.fn();
+        // act
+        sbAppSharePopupComponent.shareFile();
+        // assert
+        setTimeout(() => {
+            // assert
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+                InteractType.TOUCH,
+                InteractSubtype.ALLOW_CLICKED,
+                Environment.SETTINGS,
+                PageId.PERMISSION_POPUP
+            );
+            expect(mockCommonUtilService.showSettingsPageToast).toHaveBeenCalledWith(
+                'FILE_MANAGER_PERMISSION_DESCRIPTION',
+                'Sunbird',
+                undefined,
+                true
+            );
+            done();
+        }, 0);
     });
 
 

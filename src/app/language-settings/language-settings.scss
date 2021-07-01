@@ -1,69 +1,129 @@
 @import "src/assets/styles/_variables";
 @import "src/assets/styles/_custom-mixins";
 @import "src/assets/styles/fonts";
+@import "src/assets/styles/_variables.scss";
+
 :host {
   /* This should be item-ios only as we are targeting mode as iOS for radio-button */
-  ion-item {
-    --ion-background-color: #{map-get($colors, white_f7)};
-  }
 
-  ion-icon {
-    @include rtl {
-      float: left !important;
-      left: 15px !important;
-    }
-    @include ltr {
-      float: right !important;
-      right: 15px !important;
-    }
-  }
-
-  ion-icon.arrow-icon{
-    position: absolute;
-    transform: translateY(-50%);
+  img.arrow-icon {
+    display: inline-block;
     width: 22px;
+    margin-top: -3px;
+    float: right;
+
+    &.animate {
+      position: relative;
+      animation: dropDown 5s linear infinite;
+      animation-duration: 0.9s;
+    }
 
     @include rtl {
-      top: 33%;
       transform: rotate(180deg);
-    }
-    @include ltr {
-      top: 50%;
+      float: left !important;
     }
   }
 
-  .list-wrap {
-    margin-bottom: 8px;
-    padding-bottom: 16px;
+  button span {
+    width: 100%;
+    display: inline-block;
+
+    position: absolute;
+
+    top: 50%;
+    left: 50%;
+
+    transform: translate(-50%, -50%);
   }
 
-  ion-list[inset] {
-    margin: 0 !important;
-  }
-
-  /* Change height of the ion-item*/
-  ion-radio-group {
-    ion-item {
-      --min-height: 4rem !important;
+  @keyframes dropDown {
+    0% {
+      right: 0;
+    }
+    50% {
+      right: 10px;
+    }
+    100% {
+      right: 0;
     }
   }
-
   .gray-color {
     color: #{map-get($colors, secondary_black)};
     font-size: 1rem;
     font-weight: 500;
   }
 
-  .item-radio-checked ion-label {
-    color: #{map-get($colors, primary_black)};
-    @extend .font-weight-700;
-  }
-
-  .arrow-icon {
-
+  .font-size-17 {
+    font-size: 17px !important;
   }
 }
 
-.font-size-17 {
-  font-size: 17px !important;
+.language-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
 }
+
+.language-card {
+  box-sizing: border-box;
+  width: 50%;
+  height: 136px;
+  padding: 5%;
+  border-radius: 16px;
+}
+
+.selected-lang {
+  .language-selection {
+    background-color: var(--app-primary) !important;
+  }
+  .label-text {
+    color: var(--app-white) !important;
+  }
+}
+
+.language-card label {
+  position: relative;
+  box-shadow: 0 20px 40px -10px map-get($colors, light_silver);
+  background-color: map-get($colors, white);
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.language-card span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 20px;
+  transform: translate(-50%, -50%);
+}
+
+.language-card input {
+  display: none;
+}
+.continue {
+  position: fixed;
+  z-index: 2;
+  bottom: 32px;
+  width: 90vw;
+  left: 5vw;
+}
+
+.app-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: $blue;
+  margin-top: 5vh;
+}
+
+.icon-check {
+  visibility: visible;
+  width: auto;
+  height: auto;
+  float: right;
+  margin-top: 7px;
+  margin-right: 11px;
+}
+

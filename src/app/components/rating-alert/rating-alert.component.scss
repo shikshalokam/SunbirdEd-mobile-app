@@ -1,10 +1,13 @@
 @import "src/assets/styles/base/_variables.scss";
 @import "src/assets/styles/_custom-mixins.scss";
 @import "src/assets/styles/variables.scss";
+@import "src/assets/styles/_variables.scss";
 :host {
   
     .sb-modal-close{
       font-size: 24px !important;
+      position: absolute;
+      right: 10%;
     }
   
     .content-rating-alert ion-backdrop {
@@ -59,6 +62,8 @@
   
     .sb-popover-items{
         padding-bottom: 0 !important;
+        background-color: map-get($colors, white);
+        border-radius: 5px;
     }
   
     .sb-popover-footer{
@@ -66,8 +71,8 @@
     }
   
     .app-rating-img{
-      margin-top: $base-block-space * 2;
-      padding-left: $base-block-space * 1;
+      margin-top: $base-block-space * 3;
+      margin-bottom: $base-block-space * 0.5;
       height: $base-block-space * 7;
     }
   
@@ -91,10 +96,4 @@
       --padding-bottom: 5%;
       --background: transparent;
     }
-
-    .sb-popover-items{
-      background-color: #fff;
-      border-radius: 5px;
-    }
-        
   }

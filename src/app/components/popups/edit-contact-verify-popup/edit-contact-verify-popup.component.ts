@@ -1,9 +1,8 @@
-import { Component, OnInit, Inject, Input } from '@angular/core';
-import { NavParams, Platform, PopoverController, MenuController } from '@ionic/angular';
-import { GenerateOtpRequest, ProfileService, VerifyOtpRequest } from 'sunbird-sdk';
-
+import { Component, Inject, Input, OnInit } from '@angular/core';
 import { ProfileConstants } from '@app/app/app.constant';
 import { CommonUtilService } from '@app/services/common-util.service';
+import { MenuController, NavParams, Platform, PopoverController } from '@ionic/angular';
+import { GenerateOtpRequest, HttpClientError, ProfileService, VerifyOtpRequest } from 'sunbird-sdk';
 
 @Component({
   selector: 'app-edit-contact-verify-popup',
@@ -19,10 +18,11 @@ export class EditContactVerifyPopupComponent implements OnInit {
   @Input() title: string;
   @Input() description: string;
   @Input() type: string;
-  otp;
+  otp = '';
   invalidOtp = false;
   enableResend = true;
   unregisterBackButton: any;
+  remainingAttempts: any;
 
   constructor(
     @Inject('PROFILE_SERVICE') private profileService: ProfileService,
@@ -71,8 +71,19 @@ export class EditContactVerifyPopupComponent implements OnInit {
           this.popOverCtrl.dismiss({ OTPSuccess: true, value: this.key });
         })
         .catch(error => {
-          if (error.response.body.params.err === 'ERROR_INVALID_OTP') {
-            this.invalidOtp = true;
+          if (HttpClientError.isInstance(error)
+           && error.response.responseCode === 400) {
+            if (typeof error.response.body  === 'object') {
+              if (error.response.body.params.err === 'OTP_VERIFICATION_FAILED' &&
+              error.response.body.result.remainingAttempt > 0) {
+                this.remainingAttempts = error.response.body.result.remainingAttempt;
+                this.otp = '';
+                this.invalidOtp = true;
+              } else {
+                this.popOverCtrl.dismiss();
+                this.commonUtilService.showToast('OTP_FAILED');
+              }
+            }
           }
         });
     } else {
@@ -80,21 +91,17 @@ export class EditContactVerifyPopupComponent implements OnInit {
     }
   }
 
-
-
   async resendOTP() {
     if (this.commonUtilService.networkInfo.isNetworkAvailable) {
       this.enableResend = !this.enableResend;
       let req: GenerateOtpRequest;
       if (this.type === ProfileConstants.CONTACT_TYPE_PHONE) {
         req = {
-          userId: this.userId,
           key: this.key,
           type: ProfileConstants.CONTACT_TYPE_PHONE
         };
       } else {
         req = {
-          userId: this.userId,
           key: this.key,
           type: ProfileConstants.CONTACT_TYPE_EMAIL
         };
@@ -107,8 +114,9 @@ export class EditContactVerifyPopupComponent implements OnInit {
           await loader.dismiss();
           loader = undefined;
         })
-        .catch(async () => {
+        .catch(async (e) => {
           if (loader) {
+            this.commonUtilService.showToast('SOMETHING_WENT_WRONG');
             await loader.dismiss();
             loader = undefined;
           }

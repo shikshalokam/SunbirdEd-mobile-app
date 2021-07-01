@@ -3,46 +3,46 @@
     <ion-grid>
       <ion-row>
         <ion-col size="12" class="img-container">
-          <img [src]="icon" width="auto" height="120px" />
+          <img [src]="icon" width="auto" height="120px" alt="icon" />
         </ion-col>
       </ion-row>
 
       <ion-row>
-        <ion-col offset="2" size="7" text-center class="msg">
+        <ion-col offset="2" size="7" class="msg ion-text-center">
           <p> {{ messageKey | translate }}</p>
         </ion-col>
       </ion-row>
 
-      <ion-row text-center *ngIf="showOnlyPrimaryBtn">
+      <ion-row class="ion-text-center" *ngIf="showOnlyPrimaryBtn">
         <ion-col size="12">
           <a block (click)="tryAgain()"> {{ tryAgainKey | translate }}</a>
         </ion-col>
       </ion-row>
     </ion-grid>
   </ion-content>
-  <ion-footer padding>
+  <ion-footer class="ion-padding">
     <ion-button expand="block" slot="end" (click)="cancel()"> {{ skipKey | translate }}
-      <ion-icon name="arrow-round-forward" role="img" class="icon icon-md ion-md-arrow-round-forward pull-right"
+      <ion-icon name="arrow-forward" role="img" class="icon icon-md ion-md-arrow-round-forward pull-right"
         aria-label="arrow round-forward" ng-reflect-name="arrow-round-forward"></ion-icon>
     </ion-button>
   </ion-footer>
 </div>
 <div class="invalidContent" *ngIf="invalidContent">
-  <ion-content padding>
+  <ion-content class="ion-padding">
     <ion-grid>
       <ion-row>
         <ion-col size="12" class="img-container">
-          <img [src]="icon" width="auto" height="120px" />
+          <img [src]="icon" width="auto" height="120px" alt="icon" />
         </ion-col>
       </ion-row>
 
       <ion-row>
-        <ion-col offset="2" size="8" text-center class="msg">
-          <p><b> {{ messageKey | translate }} </b></p>
+        <ion-col offset="2" size="8" class="ion-text-center msg">
+          <p><strong> {{ messageKey | translate }} </strong></p>
         </ion-col>
       </ion-row>
 
-      <ion-row text-center *ngIf="!showOnlyPrimaryBtn">
+      <ion-row class="ion-text-center" *ngIf="!showOnlyPrimaryBtn">
         <ion-col size="12">
           <a block (click)="tryAgain()"> {{ tryAgainKey | translate }}</a>
         </ion-col>
@@ -50,9 +50,9 @@
     </ion-grid>
   </ion-content>
 
-  <ion-footer padding>
+  <ion-footer class="ion-padding">
     <ion-button class="arrow-icon" expand="block" slot="end" (click)="cancel()"> {{ skipKey | translate }}
-      <ion-icon name="arrow-round-forward" role="img" class="icon icon-md ion-md-arrow-round-forward pull-right"
+      <ion-icon name="arrow-forward" role="img" class="icon icon-md ion-md-arrow-round-forward pull-right"
         aria-label="arrow round-forward" ng-reflect-name="arrow-round-forward"></ion-icon>
     </ion-button>
   </ion-footer>

@@ -1,20 +1,21 @@
 import { Inject, Injectable } from '@angular/core';
-import { Events } from '@ionic/angular';
-import { Router, NavigationExtras } from '@angular/router';
+import { NavigationExtras, Router } from '@angular/router';
+import { GUEST_STUDENT_TABS, GUEST_TEACHER_TABS, initTabs } from '@app/app/module.service';
+import { AppGlobalService } from '@app/services/app-global-service.service';
+import { CommonUtilService } from '@app/services/common-util.service';
+import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
+import { Events } from '@app/util/events';
+import { mergeMap, tap } from 'rxjs/operators';
 import {
   AuthService, ProfileService, ProfileType, SharedPreferences
 } from 'sunbird-sdk';
 import { PreferenceKey, RouterLinks } from '../../app/app.constant';
-import { AppGlobalService } from '@app/services/app-global-service.service';
-import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
-import { CommonUtilService } from '@app/services/common-util.service';
+import { ContainerService } from '../container.services';
+import { SegmentationTagService } from '../segmentation-tag/segmentation-tag.service';
 import {
   Environment, InteractSubtype, InteractType, PageId
 } from '../telemetry-constants';
-import { ContainerService } from '../container.services';
-import { GUEST_STUDENT_TABS, GUEST_TEACHER_TABS, initTabs } from '@app/app/module.service';
-import { Observable } from 'rxjs';
-import { mergeMap, tap } from 'rxjs/operators';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -28,7 +29,8 @@ export class LogoutHandlerService {
     private appGlobalService: AppGlobalService,
     private containerService: ContainerService,
     private telemetryGeneratorService: TelemetryGeneratorService,
-    private router: Router
+    private router: Router,
+    private segmentationTagService: SegmentationTagService
   ) {
   }
 
@@ -37,6 +39,8 @@ export class LogoutHandlerService {
       return this.commonUtilService.showToast('NEED_INTERNET_TO_CHANGE');
     }
 
+    this.segmentationTagService.persistSegmentation();
+
     this.generateLogoutInteractTelemetry(InteractType.TOUCH,
       InteractSubtype.LOGOUT_INITIATE, '');
 
@@ -44,6 +48,11 @@ export class LogoutHandlerService {
       tap(async (guestUserId: string) => {
         if (!guestUserId) {
           await this.preferences.putString(PreferenceKey.SELECTED_USER_TYPE, ProfileType.TEACHER).toPromise();
+        } else {
+          const allProfileDetais = await this.profileService.getAllProfiles().toPromise();
+          const currentProfile = allProfileDetais.find(ele => ele.uid === guestUserId);
+          const guestProfileType = (currentProfile && currentProfile.profileType) ? currentProfile.profileType : ProfileType.NONE;
+          await this.preferences.putString(PreferenceKey.SELECTED_USER_TYPE, guestProfileType).toPromise();
         }
 
         splashscreen.clearPrefs();
@@ -58,6 +67,7 @@ export class LogoutHandlerService {
         await this.navigateToAptPage();
         this.events.publish(AppGlobalService.USER_INFO_UPDATED);
         this.appGlobalService.setEnrolledCourseList([]);
+        this.segmentationTagService.getPersistedSegmentaion();
       })
     ).subscribe();
   }
@@ -69,7 +79,7 @@ export class LogoutHandlerService {
 
     if (selectedUserType === ProfileType.STUDENT) {
       initTabs(this.containerService, GUEST_STUDENT_TABS);
-    } else if (selectedUserType === ProfileType.TEACHER) {
+    } else if (this.commonUtilService.isAccessibleForNonStudentRole(selectedUserType)) {
       initTabs(this.containerService, GUEST_TEACHER_TABS);
     }
 
@@ -77,7 +87,9 @@ export class LogoutHandlerService {
 
     const isOnboardingCompleted = (await this.preferences.getString(PreferenceKey.IS_ONBOARDING_COMPLETED).toPromise() === 'true') ?
       true : false;
-    if (isOnboardingCompleted) {
+    if (selectedUserType === ProfileType.ADMIN) {
+      this.router.navigate([RouterLinks.USER_TYPE_SELECTION_LOGGEDIN]);
+    } else if (isOnboardingCompleted) {
       const navigationExtras: NavigationExtras = { state: { loginMode: 'guest' } };
       this.router.navigate([`/${RouterLinks.TABS}`], navigationExtras);
     } else {

@@ -11,8 +11,8 @@ import { TelemetryGeneratorService } from '@app/services/telemetry-generator.ser
   styleUrls: ['./explore-books-sort.component.scss'],
 })
 export class ExploreBooksSortComponent implements OnInit {
-  @ViewChild('boardSelect') boardSelect;
-  @ViewChild('mediumSelect') mediumSelect;
+  @ViewChild('boardSelect', { static: false }) boardSelect;
+  @ViewChild('mediumSelect', { static: false }) mediumSelect;
 
   categories;
   backButtonFunc = undefined;
@@ -30,12 +30,12 @@ export class ExploreBooksSortComponent implements OnInit {
   };
 
   constructor(
-    private navParams: NavParams,
-    private platform: Platform,
-    private commonUtilService: CommonUtilService,
-    private telemetryGeneratorService: TelemetryGeneratorService,
-    private fb: FormBuilder,
-    private modalCtrl: ModalController
+      private navParams: NavParams,
+      private platform: Platform,
+      private commonUtilService: CommonUtilService,
+      private telemetryGeneratorService: TelemetryGeneratorService,
+      private fb: FormBuilder,
+      private modalCtrl: ModalController
   ) {
     this.initForm();
   }

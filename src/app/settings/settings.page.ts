@@ -1,28 +1,24 @@
+import { Location } from '@angular/common';
 import { Component, Inject, OnInit } from '@angular/core';
+import { NavigationExtras, Router } from '@angular/router';
+import { SbAppSharePopupComponent, SbPopoverComponent } from '@app/app/components/popups';
 import { AppVersion } from '@ionic-native/app-version/ngx';
+import { SocialSharing } from '@ionic-native/social-sharing/ngx';
+import { Platform, PopoverController, ToastController } from '@ionic/angular';
+import { TranslateService } from '@ngx-translate/core';
+import { Observable, Subscription } from 'rxjs';
+import { catchError, finalize, map, mergeMap, tap } from 'rxjs/operators';
+import { AppHeaderService, CommonUtilService, FormAndFrameworkUtilService, TelemetryGeneratorService, UtilityService } from 'services';
+import { Environment, ImpressionType, InteractSubtype, InteractType, PageId } from 'services/telemetry-constants';
 import {
-  ProfileService,
-  SharedPreferences,
+  ApiService, AuthService,
+  MergeServerProfilesRequest, ProfileService,
+  SdkConfig, SharedPreferences,
   TelemetryImpressionRequest,
-  AuthService,
-  SdkConfig,
-  ApiService,
-  MergeServerProfilesRequest,
   WebviewManualMergeSessionProvider,
   WebviewSessionProviderConfig
 } from 'sunbird-sdk';
-import { AppHeaderService, CommonUtilService, FormAndFrameworkUtilService, TelemetryGeneratorService, UtilityService } from 'services';
 import { PreferenceKey, RouterLinks } from '../app.constant';
-import { Environment, ImpressionType, InteractSubtype, InteractType, PageId } from 'services/telemetry-constants';
-import { SocialSharing } from '@ionic-native/social-sharing/ngx';
-import { Router, NavigationExtras } from '@angular/router';
-import { SbPopoverComponent, SbAppSharePopupComponent } from '@app/app/components/popups';
-import { PopoverController, ToastController } from '@ionic/angular';
-import { TranslateService } from '@ngx-translate/core';
-import { Location } from '@angular/common';
-import { Platform } from '@ionic/angular';
-import { Observable, Subscription } from 'rxjs';
-import { map, mergeMap, catchError, finalize, tap } from 'rxjs/operators';
 
 @Component({
   selector: 'app-settings',
@@ -80,6 +76,12 @@ export class SettingsPage implements OnInit {
     this.handleBackButton();
   }
 
+  ionViewWillLeave() {
+    if (this.backButtonFunc) {
+      this.backButtonFunc.unsubscribe();
+    }
+  }
+
   ngOnInit() {
     const telemetryImpressionRequest = new TelemetryImpressionRequest();
     telemetryImpressionRequest.type = ImpressionType.VIEW;
@@ -120,7 +122,7 @@ export class SettingsPage implements OnInit {
       },
       cssClass: 'sb-popover',
     });
-    popover.present();
+    await popover.present();
   }
 
   generateInteractTelemetry(interactionType, interactSubtype) {
@@ -180,7 +182,7 @@ export class SettingsPage implements OnInit {
       cssClass: 'sb-popover primary',
     });
 
-    confirm.present();
+    await confirm.present();
   }
 
   private async mergeAccount() {
@@ -226,8 +228,8 @@ export class SettingsPage implements OnInit {
         } as MergeServerProfilesRequest;
       }),
       tap(async () => {
-        loader = await (this.commonUtilService.getLoader() as Promise<any>);
-        loader.present();
+        loader = await this.commonUtilService.getLoader();
+        await loader.present();
       }),
       mergeMap((mergeServerProfilesRequest) => {
         return this.profileService.mergeServerProfiles(mergeServerProfilesRequest);

@@ -1,44 +1,44 @@
-import { Subscription } from 'rxjs';
-import { Events, Platform } from '@ionic/angular';
-import { ActivatedRoute, Router, NavigationExtras } from '@angular/router';
 import { Location } from '@angular/common';
-import { Component, Inject, NgZone, OnInit, Input } from '@angular/core';
+import { Component, Inject, Input, NgZone, OnInit } from '@angular/core';
+import { ActivatedRoute, NavigationExtras, Router } from '@angular/router';
+import { BatchConstants, ContentCard, PreferenceKey, RouterLinks, ViewMore } from '@app/app/app.constant';
+import { AppGlobalService } from '@app/services/app-global-service.service';
+import { AppHeaderService } from '@app/services/app-header.service';
+import { CommonUtilService } from '@app/services/common-util.service';
+import { CourseUtilService } from '@app/services/course-util.service';
+import { NavigationService } from '@app/services/navigation-handler.service';
 import {
-  Content,
-  ContentEventType,
-  ContentImportRequest,
-  ContentImportResponse,
-  ContentImportStatus,
-  ContentRequest,
-  ContentSearchCriteria,
-  ContentSearchResult,
-  ContentService,
-  Course,
-  CourseService,
-  DownloadEventType,
-  DownloadProgress,
-  EventsBusEvent,
-  EventsBusService,
-  SearchType,
-  TelemetryObject,
-  CorrelationData,
-  LogLevel,
-  Mode
-} from 'sunbird-sdk';
-
-import {
-  Environment,
+  CorReleationDataType, Environment,
   ImpressionType,
   InteractSubtype,
   InteractType,
   PageId
 } from '@app/services/telemetry-constants';
-import { ContentType, ViewMore, MimeType, RouterLinks, ContentFilterConfig } from '@app/app/app.constant';
-import { FormAndFrameworkUtilService } from '@app/services/formandframeworkutil.service';
-import { CourseUtilService } from '@app/services/course-util.service';
 import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
-import { CommonUtilService } from '@app/services/common-util.service';
-import { AppHeaderService } from '@app/services/app-header.service';
+import { ContentUtil } from '@app/util/content-util';
+import { Platform, PopoverController } from '@ionic/angular';
+import { Events } from '@app/util/events';
+import { Subscription } from 'rxjs';
+import {
+  Batch, Content,
+  ContentEventType,
+  ContentImportRequest,
+  ContentImportResponse,
+  ContentImportStatus,
+  ContentSearchCriteria,
+  ContentSearchResult,
+  ContentService,
+  CorrelationData, Course,
+  CourseBatchesRequest, CourseBatchStatus, CourseEnrollmentType, CourseService,
+  DownloadEventType,
+  DownloadProgress,
+  EventsBusEvent,
+  EventsBusService,
+  FetchEnrolledCourseRequest, LogLevel, SearchType,
+  SharedPreferences,
+  SortOrder
+} from 'sunbird-sdk';
+import { EnrollmentDetailsComponent } from '../components/enrollment-details/enrollment-details.component';
 
 @Component({
   selector: 'app-view-more-activity',
@@ -62,11 +62,6 @@ export class ViewMoreActivityComponent implements OnInit {
   loadMoreBtn = true;
 
   /**
-   * Flag to show / hide downloads only button
-   */
-  showDownloadsOnlyToggle = false;
-
-  /**
    * value for downloads only toggle button, may have true/false
    */
   downloadsOnlyToggle = false;
@@ -78,10 +73,8 @@ export class ViewMoreActivityComponent implements OnInit {
   /**
    * Flag to switch between view-more-card in view
    */
-  localContentsCard = false;
   backButtonFunc: Subscription;
   headerTitle: string;
-  private corRelationList: Array<CorrelationData>;
   pageType = 'library';
   source = '';
   queuedIdentifiers: Array<any> = [];
@@ -92,8 +85,6 @@ export class ViewMoreActivityComponent implements OnInit {
   audience: any;
   defaultImg: string;
   private eventSubscription: Subscription;
-  // adding for ETBV2 integration, to show saved resources after recentlyViewed
-  savedResources: Array<any>;
   enrolledCourses: any;
   guestUser: any;
   userId: any;
@@ -122,11 +113,14 @@ export class ViewMoreActivityComponent implements OnInit {
   objId;
   objType;
   objVer;
+  loader: any;
+  isLoading = false;
 
   constructor(
     @Inject('CONTENT_SERVICE') private contentService: ContentService,
     @Inject('EVENTS_BUS_SERVICE') private eventBusService: EventsBusService,
     @Inject('COURSE_SERVICE') private courseService: CourseService,
+    @Inject('SHARED_PREFERENCES') private preferences: SharedPreferences,
     private events: Events,
     private ngZone: NgZone,
     private courseUtilService: CourseUtilService,
@@ -138,13 +132,14 @@ export class ViewMoreActivityComponent implements OnInit {
     private location: Location,
     private platform: Platform,
     private zone: NgZone,
-    private formAndFrameworkUtilService: FormAndFrameworkUtilService
+    private appGlobalService: AppGlobalService,
+    private popoverCtrl: PopoverController,
+    private navService: NavigationService
   ) {
     this.route.queryParams.subscribe(params => {
       if (this.router.getCurrentNavigation().extras.state) {
         console.log('params from state : ', this.router.getCurrentNavigation().extras.state);
         this.uid = this.router.getCurrentNavigation().extras.state.uid;
-        this.showDownloadsOnlyToggle = this.router.getCurrentNavigation().extras.state.showDownloadOnlyToggle;
         this.title = this.router.getCurrentNavigation().extras.state.headerTitle;
         this.userId = this.router.getCurrentNavigation().extras.state.userId;
         this.pageName = this.router.getCurrentNavigation().extras.state.pageName;
@@ -153,9 +148,11 @@ export class ViewMoreActivityComponent implements OnInit {
         this.audience = this.router.getCurrentNavigation().extras.state.audience;
         this.enrolledCourses = this.router.getCurrentNavigation().extras.state.enrolledCourses;
 
+        if (this.router.getCurrentNavigation().extras.state.sectionName) {
+          this.sectionName = this.router.getCurrentNavigation().extras.state.sectionName;
+        }
+
         if (this.headerTitle !== this.title) {
-          console.log('inside header title if condition');
-          this.headerTitle = this.headerTitle;
           this.offset = 0;
           this.loadMoreBtn = true;
           this.mapper();
@@ -182,22 +179,14 @@ export class ViewMoreActivityComponent implements OnInit {
   ionViewWillEnter(): void {
     this.zone.run(() => {
       this.headerService.showHeaderWithBackButton();
-      this.tabBarElement.style.display = 'none';
+      if (this.tabBarElement) {
+        this.tabBarElement.style.display = 'none';
+      }
       this.handleBackButton();
     });
   }
 
   subscribeUtilityEvents() {
-    this.events.subscribe('savedResources:update', async (res) => {
-      if (res && res.update) {
-        if (this.pageName === ViewMore.PAGE_RESOURCE_SAVED) {
-          this.getLocalContents(false, this.downloadsOnlyToggle, true);
-        } else if (this.pageName === ViewMore.PAGE_RESOURCE_RECENTLY_VIEWED) {
-          await this.getLocalContents(true, this.downloadsOnlyToggle, true);
-        }
-      }
-    });
-
     this.events.subscribe('viewMore:Courseresume', (data) => {
       this.resumeContentData = data.content;
       this.getContentDetails(data.content);
@@ -215,16 +204,17 @@ export class ViewMoreActivityComponent implements OnInit {
    * Search content
    */
   async search() {
-    const loader = await this.commonUtilService.getLoader();
-    await loader.present();
+    this.isLoading = true;
+    const selectedLanguage = await this.preferences.getString(PreferenceKey.SELECTED_LANGUAGE_CODE).toPromise();
     const searchCriteria: ContentSearchCriteria = {
-      searchType: SearchType.FILTER
+      searchType: SearchType.FILTER,
+      languageCode: selectedLanguage
     };
     this.searchQuery.request['searchType'] = SearchType.FILTER;
     this.searchQuery.request['offset'] = this.offset;
     this.contentService.searchContent(searchCriteria, this.searchQuery).toPromise()
       .then((data: ContentSearchResult) => {
-        this.ngZone.run(async () => {
+        this.ngZone.run(() => {
           if (data && data.contentDataList) {
             this.loadMoreBtn = data.contentDataList.length >= this.searchLimit;
             if (this.isLoadMore) {
@@ -237,14 +227,14 @@ export class ViewMoreActivityComponent implements OnInit {
           } else {
             this.loadMoreBtn = false;
           }
-          await loader.dismiss();
+          this.isLoading = false;
         });
         this.generateImpressionEvent();
         this.generateLogEvent(data);
       })
-      .catch(async () => {
+      .catch(() => {
         console.error('Error: while fetching view more content');
-        await loader.dismiss();
+        this.isLoading = false;
       });
   }
 
@@ -270,26 +260,17 @@ export class ViewMoreActivityComponent implements OnInit {
       case ViewMore.PAGE_COURSE_ENROLLED:
         this.pageType = 'enrolledCourse';
         this.loadMoreBtn = false;
-        this.localContentsCard = false;
         this.getEnrolledCourse();
         break;
 
       case ViewMore.PAGE_COURSE_POPULAR:
         this.pageType = 'popularCourses';
-        this.localContentsCard = false;
         this.search();
         break;
 
-      case ViewMore.PAGE_RESOURCE_SAVED:
-        this.loadMoreBtn = false;
-        this.localContentsCard = true;
-        this.getLocalContents();
-        break;
-
-      case ViewMore.PAGE_RESOURCE_RECENTLY_VIEWED:
-        this.loadMoreBtn = false;
-        this.localContentsCard = true;
-        await this.getLocalContents(true);
+      case ViewMore.PAGE_TV_PROGRAMS:
+        this.pageType = 'tvPrograms';
+        this.search();
         break;
 
       default:
@@ -301,102 +282,27 @@ export class ViewMoreActivityComponent implements OnInit {
   /**
    * Get enrolled courses
    */
-  async getEnrolledCourse() {
-    const loader = await this.commonUtilService.getLoader();
-    await loader.present();
+  getEnrolledCourse() {
+    this.isLoading = true;
     this.pageType = 'enrolledCourse';
     const option = {
       userId: this.userId,
-      refreshEnrolledCourses: false,
-      returnRefreshedEnrolledCourses: true
+      returnFreshCourses: true
     };
     this.courseService.getEnrolledCourses(option).toPromise()
-      .then(async (data: Course[]) => {
+      .then((data: Course[]) => {
         if (data) {
           this.searchList = data;
           this.loadMoreBtn = false;
+          for (const course of data) {
+            course.completionPercentage = course.completionPercentage || 0;
+          }
         }
-        await loader.dismiss();
+        this.isLoading = false;
       })
-      .catch(async (error: any) => {
+      .catch((error: any) => {
         console.error('error while loading enrolled courses', error);
-        await loader.dismiss();
-      });
-  }
-
-  /**
-   * Get local content
-   */
-  async getLocalContents(recentlyViewed?: boolean, downloaded?: boolean, hideLoaderFlag?: boolean) {
-    const loader = await this.commonUtilService.getLoader();
-    if (!hideLoaderFlag) {
-      await loader.present();
-    }
-
-    let contentTypes;
-    if (recentlyViewed) {
-      contentTypes = [];
-    } else {
-      contentTypes = await this.formAndFrameworkUtilService.getSupportedContentFilterConfig(
-        ContentFilterConfig.NAME_LIBRARY);
-    }
-
-    const requestParams: ContentRequest = {
-      uid: this.uid,
-      audience: this.audience,
-      recentlyViewed,
-      localOnly: downloaded,
-      contentTypes,
-      limit: recentlyViewed ? 20 : 0
-    };
-    this.contentService.getContents(requestParams).toPromise()
-      .then(data => {
-        const contentData = [];
-        data.forEach((value) => {
-          value.contentData['lastUpdatedOn'] = value.lastUpdatedTime;
-          if (value.contentData.appIcon) {
-            if (value.contentData.appIcon.includes('http:') || value.contentData.appIcon.includes('https:')) {
-              if (this.commonUtilService.networkInfo.isNetworkAvailable) {
-                value.contentData.appIcon = value.contentData.appIcon;
-              } else {
-                value.contentData.appIcon = this.defaultImg;
-              }
-            } else if (value.basePath) {
-              value.contentData.appIcon = value.basePath + '/' + value.contentData.appIcon;
-            }
-          }
-          contentData.push(value);
-          // if saved resources are available
-        });
-        this.ngZone.run(() => {
-          if ((this.pageName === ViewMore.PAGE_RESOURCE_RECENTLY_VIEWED) && recentlyViewed) {
-            this.searchList = contentData;
-          }
-          //
-          if ((this.pageName === ViewMore.PAGE_RESOURCE_RECENTLY_VIEWED) && !recentlyViewed) {
-            this.savedResources = contentData;
-            for (let i = 0; i < this.searchList.length; i++) {
-              const index = this.savedResources.findIndex((el) => {
-                return el.identifier === this.searchList[i].identifier;
-              });
-
-              if (index !== -1) {
-                this.savedResources.splice(index, 1);
-              }
-            }
-            this.searchList.push(...this.savedResources);
-          }
-          console.log('content data is =>', contentData);
-          if (!hideLoaderFlag) {
-            loader.dismiss();
-          }
-          this.loadMoreBtn = false;
-        });
-      })
-      .catch(async () => {
-        if (!hideLoaderFlag) {
-          await loader.dismiss();
-        }
+        this.isLoading = false;
       });
   }
 
@@ -515,7 +421,9 @@ export class ViewMoreActivityComponent implements OnInit {
       if (this.eventSubscription) {
         this.eventSubscription.unsubscribe();
       }
-      this.tabBarElement.style.display = 'flex';
+      if (this.tabBarElement) {
+        this.tabBarElement.style.display = 'flex';
+      }
       this.isLoadMore = false;
       this.showOverlay = false;
       this.backButtonFunc.unsubscribe();
@@ -547,9 +455,6 @@ export class ViewMoreActivityComponent implements OnInit {
     if (!content.isAvailableLocally && !this.commonUtilService.networkInfo.isNetworkAvailable) {
       return false;
     }
-    const identifier = content.contentId || content.identifier;
-    const type = this.telemetryGeneratorService.isCollection(content.mimeType) ? content.contentType : ContentType.RESOURCE;
-    const telemetryObject: TelemetryObject = new TelemetryObject(identifier, type, content.pkgVersion);
 
     const values = new Map();
     values['sectionName'] = this.sectionName;
@@ -558,17 +463,185 @@ export class ViewMoreActivityComponent implements OnInit {
     this.telemetryGeneratorService.generateInteractTelemetry(InteractType.TOUCH,
       InteractSubtype.CONTENT_CLICKED,
       this.env,
-      this.pageName ? this.pageName : this.layoutName,
-      telemetryObject,
+      PageId.VIEW_MORE,
+      ContentUtil.getTelemetryObject(content),
       values);
-    if (content.mimeType === MimeType.COLLECTION) {
-      this.router.navigate([RouterLinks.COLLECTION_DETAIL_ETB], {
-        state: { content }
-      });
-    } else {
-      this.router.navigate([RouterLinks.CONTENT_DETAILS], {
-        state: { content }
+    this.navService.navigateToDetailPage(content, { content });
+  }
+
+  getContentImg(content) {
+    const img = this.commonUtilService.getContentImg(content);
+    return img;
+  }
+
+  openCourseDetails(course, index) {
+    this.index = index;
+    const payload = {
+      guestUser: this.guestUser,
+      enrolledCourses: this.enrolledCourses
+    };
+
+    this.checkRetiredOpenBatch(course, this.pageType, payload);
+  }
+
+  async checkRetiredOpenBatch(content: any, layoutName?: string, payload?: any) {
+    this.loader = await this.commonUtilService.getLoader();
+    await this.loader.present();
+    let anyOpenBatch = false;
+    const enrolledCourses = payload.enrolledCourses || [];
+    let retiredBatches: Array<any> = [];
+    if (layoutName !== ContentCard.LAYOUT_INPROGRESS) {
+      retiredBatches = enrolledCourses.filter((element) => {
+        if (element.contentId === content.identifier && element.batch.status === 1 && element.cProgress !== 100) {
+          anyOpenBatch = true;
+          content.batch = element.batch;
+        }
+        if (element.contentId === content.identifier && element.batch.status === 2 && element.cProgress !== 100) {
+          return element;
+        }
       });
     }
+    if (anyOpenBatch || !retiredBatches.length) {
+      // open the batch directly
+      this.navigateToDetailsPage(content, layoutName);
+    } else if (retiredBatches.length) {
+      this.navigateToBatchListPopup(content, layoutName, retiredBatches, payload);
+    }
+    await this.loader.dismiss();
   }
+
+  private async navigateToBatchListPopup(content: any, layoutName?: string, retiredBatches?: any, payload?: any) {
+    const ongoingBatches = [];
+    const courseBatchesRequest: CourseBatchesRequest = {
+      filters: {
+        courseId: layoutName === ContentCard.LAYOUT_INPROGRESS ? content.contentId : content.identifier,
+        enrollmentType: CourseEnrollmentType.OPEN,
+        status: [CourseBatchStatus.IN_PROGRESS]
+      },
+      sort_by: { createdDate: SortOrder.DESC },
+      fields: BatchConstants.REQUIRED_FIELDS
+    };
+    const reqvalues = new Map();
+    reqvalues['enrollReq'] = courseBatchesRequest;
+
+    if (this.commonUtilService.networkInfo.isNetworkAvailable) {
+      if (!payload.guestUser) {
+        this.loader = await this.commonUtilService.getLoader();
+        await this.loader.present();
+        this.courseService.getCourseBatches(courseBatchesRequest).toPromise()
+          .then((res: Batch[]) => {
+            this.zone.run(async () => {
+              const batches = res;
+              if (batches.length) {
+                batches.forEach((batch, key) => {
+                  if (batch.status === 1) {
+                    ongoingBatches.push(batch);
+                  }
+                });
+                this.telemetryGeneratorService.generateInteractTelemetry(InteractType.TOUCH,
+                  'showing-enrolled-ongoing-batch-popup',
+                  Environment.HOME,
+                  PageId.CONTENT_DETAIL, undefined,
+                  reqvalues);
+                await this.loader.dismiss();
+
+                const popover = await this.popoverCtrl.create({
+                  component: EnrollmentDetailsComponent,
+                  componentProps: {
+                    upcommingBatches: [],
+                    ongoingBatches,
+                    retiredBatches,
+                    content
+                  },
+                  cssClass: 'enrollement-popover'
+                });
+                await popover.present();
+                const { data } = await popover.onDidDismiss();
+                if (data && data.isEnrolled) {
+                  this.getEnrolledCourses();
+                }
+
+              } else {
+                await this.loader.dismiss();
+                this.navigateToDetailsPage(content, layoutName);
+                this.commonUtilService.showToast('NO_BATCHES_AVAILABLE');
+              }
+            });
+          })
+          .catch((error: any) => {
+            console.log('error while fetching course batches ==>', error);
+          });
+      } else {
+        this.router.navigate([RouterLinks.COURSE_BATCHES]);
+      }
+    } else {
+      this.commonUtilService.showToast('ERROR_NO_INTERNET_MESSAGE');
+    }
+  }
+
+
+  private async navigateToDetailsPage(content: any, layoutName) {
+    const identifier = content.contentId || content.identifier;
+    const corRelationList: Array<CorrelationData> = [{
+      id: this.sectionName,
+      type: CorReleationDataType.SECTION
+    }, {
+      id: identifier,
+      type: CorReleationDataType.ROOT_ID
+    }];
+
+    const values = new Map();
+    values['sectionName'] = this.sectionName;
+    values['positionClicked'] = this.index;
+
+    this.telemetryGeneratorService.generateInteractTelemetry(InteractType.TOUCH,
+      InteractSubtype.CONTENT_CLICKED,
+      this.env,
+      PageId.VIEW_MORE,
+      ContentUtil.getTelemetryObject(content),
+      values,
+      ContentUtil.generateRollUp(undefined, identifier),
+      this.commonUtilService.deDupe(corRelationList, 'type'));
+
+    this.zone.run(async () => {
+      if (layoutName === 'enrolledCourse') {
+        this.navService.navigateToTrackableCollection({ content });
+      } else {
+        this.navService.navigateToDetailPage(
+          content,
+          { content }
+        );
+      }
+    });
+  }
+
+  getEnrolledCourses(returnRefreshedCourses: boolean = false): void {
+
+    const option: FetchEnrolledCourseRequest = {
+      userId: this.userId,
+      returnFreshCourses: returnRefreshedCourses
+    };
+    this.courseService.getEnrolledCourses(option).toPromise()
+      .then((enrolledCourses) => {
+        if (enrolledCourses) {
+          this.zone.run(() => {
+            this.enrolledCourses = enrolledCourses;
+            if (this.enrolledCourses.length > 0) {
+              const courseList: Array<Course> = [];
+              for (const course of this.enrolledCourses) {
+                course.completionPercentage = course.completionPercentage || 0;
+                courseList.push(course);
+              }
+
+              this.appGlobalService.setEnrolledCourseList(courseList);
+            }
+
+            this.showLoader = false;
+          });
+        }
+      }, (err) => {
+        this.showLoader = false;
+      });
+  }
+
 }

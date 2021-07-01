@@ -1,8 +1,14 @@
 require('reflect-metadata');
 require('babel-polyfill');
+require('./regexp-polyfill.min')
+
+window.dayjs = require('dayjs')
 
 global.cordova = {
     plugins: {
+        InAppUpdateManager: {
+            checkForImmediateUpdate: () => {}
+        },
         notification: {
             local: {
                 lanchDetails: {},
@@ -11,19 +17,30 @@ global.cordova = {
             }
         },
         diagnostic: {
-            switchToSettings: () => { }
+            switchToSettings: () => { },
+            getPermissionAuthorizationStatus: () => { },
+            permissionStatus: {
+                DENIED_ALWAYS: 'DENIED_ALWAYS'
+            }
         },
         printer: {
-            print: () => {}
+            print: () => { }
+        },
+        permissions: {
+            checkPermission: () => { },
+            requestPermissions: () => { },
+            checkPermission: () => { }
         }
     },
     file: {
-        applicationDirectory: "/path"
+        applicationDirectory: "/path",
+        externalRootDirectory: '/path'
     },
     InAppBrowser: {
         open: () => ({
             addEventListener: () => { },
-        }),
+            close: () => { }
+        })
     }
 };
 
@@ -32,7 +49,7 @@ global.supportfile = {
     makeEntryInSunbirdSupportFile: () => { }
 }
 global.document = {
-    getElementById: () => {},
+    getElementById: () => { },
 }
 
 global.FCMPlugin = {
@@ -54,8 +71,44 @@ global.splashscreen = {
     markImportDone: () => { },
     hide: () => { },
     clearPrefs: () => { },
+    setContent: () => { }
 }
 
 global.codePush = {
-    getCurrentPackage: () => { }
+    getCurrentPackage: () => { },
+    sync: () => { }
 }
+
+global.SyncStatus = {
+    DOWNLOADING_PACKAGE: 'DOWNLOADING_PACKAGE',
+    INSTALLING_UPDATE: 'INSTALLING_UPDATE',
+    ERROR: 'ERROR'
+}
+
+global.plugins = {
+    webViewChecker: {
+        getCurrentWebViewPackageInfo: () => Promise.resolve({versionName: '0'}),
+        openGooglePlayPage: () => Promise.resolve()
+    }
+}
+global.FCMPlugin = {
+    getToken: () => {},
+    onNotification: () => {},
+    onTokenRefresh: () => {},
+    subscribeToTopic: () => {},
+    unsubscribeFromTopic: () => {}
+}
+
+global.sbsync = {
+    onSyncSucces: () => {}
+}
+
+global.qrScanner = {
+    startScanner: (screenTitle, displayText, displayTextColor, buttonText, showButton, isRTL, callback) => {},
+    stopScanner: () => {}
+}
+
+global.downloadManager = {
+    enqueue: () => { }
+}
+

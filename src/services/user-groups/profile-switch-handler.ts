@@ -1,6 +1,6 @@
 import { Router } from '@angular/router';
 import { Injectable, Inject } from '@angular/core';
-import { Events } from '@ionic/angular';
+import { Events } from '@app/util/events';
 import { ProfileType, SharedPreferences, AuthService } from 'sunbird-sdk';
 
 import { PreferenceKey, RouterLinks } from '@app/app/app.constant';
@@ -29,11 +29,10 @@ export class ProfileSwitchHandler {
         setTimeout(() => {
             if (selectedProfile.profileType === ProfileType.STUDENT) {
                 initTabs(this.container, GUEST_STUDENT_TABS);
-                this.preferences.putString(PreferenceKey.SELECTED_USER_TYPE, ProfileType.STUDENT).toPromise().then();
             } else {
                 initTabs(this.container, GUEST_TEACHER_TABS);
-                this.preferences.putString(PreferenceKey.SELECTED_USER_TYPE, ProfileType.TEACHER).toPromise().then();
             }
+            this.preferences.putString(PreferenceKey.SELECTED_USER_TYPE, selectedProfile.profileType).toPromise().then();
             this.events.publish('refresh:profile');
             this.events.publish(AppGlobalService.USER_INFO_UPDATED);
             this.appGlobalService.setSelectedUser(undefined);

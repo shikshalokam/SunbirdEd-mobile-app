@@ -1,44 +1,56 @@
-import { Router, NavigationExtras, NavigationStart, Event } from '@angular/router';
 import { Location } from '@angular/common';
-import { AfterViewInit, Component, Inject, NgZone, OnInit, EventEmitter, ViewChild } from '@angular/core';
-import { Events, Platform, IonRouterOutlet, MenuController } from '@ionic/angular';
-import { StatusBar } from '@ionic-native/status-bar/ngx';
-import { TranslateService } from '@ngx-translate/core';
-import { Observable, combineLatest } from 'rxjs';
-import { mergeMap, filter, tap, mapTo } from 'rxjs/operators';
-import { Network } from '@ionic-native/network/ngx';
 import {
-  ErrorEventType, EventNamespace, EventsBusService, SharedPreferences,
-  SunbirdSdk, TelemetryAutoSyncService, TelemetryService, NotificationService,
-  GetSystemSettingsRequest, SystemSettings, SystemSettingsService,
-  CodePushExperimentService, AuthEventType, CorrelationData, Profile, DeviceRegisterService, ProfileService,
-} from 'sunbird-sdk';
-import {
-  InteractType,
-  InteractSubtype,
-  Environment, PageId,
-  ImpressionType,
-  CorReleationDataType
-} from '@app/services/telemetry-constants';
-import { PreferenceKey, EventTopics, SystemSettingsIds, GenericAppConfig, ProfileConstants } from './app.constant';
+  AfterViewInit, Component,
+  EventEmitter, Inject, NgZone,
+  OnInit, ViewChild
+} from '@angular/core';
+import { Event, NavigationExtras, NavigationStart, Router } from '@angular/router';
 import { ActivePageService } from '@app/services/active-page/active-page-service';
-import {
-  AppGlobalService,
-  CommonUtilService,
-  TelemetryGeneratorService,
-  UtilityService,
-  AppRatingService,
-  AppHeaderService,
-  FormAndFrameworkUtilService,
-  SplashScreenService,
-  LocalCourseService
-} from '../services';
 import { LogoutHandlerService } from '@app/services/handlers/logout-handler.service';
-import { NotificationService as LocalNotification } from '@app/services/notification.service';
-import { RouterLinks } from './app.constant';
 import { TncUpdateHandlerService } from '@app/services/handlers/tnc-update-handler.service';
 import { NetworkAvailabilityToastService } from '@app/services/network-availability-toast/network-availability-toast.service';
+import { NotificationService as LocalNotification } from '@app/services/notification.service';
 import { SplaschreenDeeplinkActionHandlerDelegate } from '@app/services/sunbird-splashscreen/splaschreen-deeplink-action-handler-delegate';
+import {
+  CorReleationDataType, Environment,
+  ID, ImpressionType, InteractSubtype, InteractType,
+  PageId
+} from '@app/services/telemetry-constants';
+import { Network } from '@ionic-native/network/ngx';
+import { StatusBar } from '@ionic-native/status-bar/ngx';
+import { IonRouterOutlet, MenuController, Platform } from '@ionic/angular';
+import { Events } from '@app/util/events';
+import { TranslateService } from '@ngx-translate/core';
+import { CsClientStorage } from '@project-sunbird/client-services/core';
+import { combineLatest, Observable, Subscription } from 'rxjs';
+import { filter, mapTo, mergeMap, take, tap } from 'rxjs/operators';
+import {
+  AuthEventType, CodePushExperimentService, CorrelationData,
+  DeviceRegisterService, ErrorEventType, EventNamespace, EventsBusService,
+  GetSystemSettingsRequest, NotificationService,
+  Profile, ProfileService, ProfileType, SharedPreferences,
+  SunbirdSdk,
+  SystemSettings, SystemSettingsService, TelemetryAutoSyncService, TelemetryService
+} from 'sunbird-sdk';
+import {
+  AppGlobalService,
+  AppHeaderService, AppRatingService, CommonUtilService,
+  FormAndFrameworkUtilService,
+  LocalCourseService,
+  LoginHandlerService, SplashScreenService, TelemetryGeneratorService,
+  UtilityService
+} from '../services';
+import {
+  AppThemes, EventTopics, GenericAppConfig,
+  PreferenceKey, ProfileConstants, RouterLinks, SystemSettingsIds
+} from './app.constant';
+import { EventParams } from './components/sign-in-card/event-params.interface';
+import { ApiUtilsService, DbService, LoaderService, LocalStorageService, NetworkService } from './manage-learn/core';
+import { SBTagModule } from 'sb-tag-manager';
+import { SegmentationTagService, TagPrefixConstants } from '@app/services/segmentation-tag/segmentation-tag.service';
+
+declare const cordova;
+
 @Component({
   selector: 'app-root',
   templateUrl: 'app.component.html'
@@ -61,7 +73,15 @@ export class AppComponent implements OnInit, AfterViewInit {
   selectedLanguage: string;
   appName: string;
   appVersion: string;
-  @ViewChild('mainContent', { read: IonRouterOutlet }) routerOutlet: IonRouterOutlet;
+  @ViewChild('mainContent', { read: IonRouterOutlet, static: false }) routerOutlet: IonRouterOutlet;
+  isForeground: boolean;
+  isPlannedMaintenanceStarted = false;
+  isUnplannedMaintenanceStarted = false;
+  timeLeft: string;
+  eventSubscription: Subscription;
+  isTimeAvailable = false;
+  isOnBoardingCompleted: boolean;
+  // tagManagerInstance:any;
 
   constructor(
     @Inject('TELEMETRY_SERVICE') private telemetryService: TelemetryService,
@@ -95,13 +115,25 @@ export class AppComponent implements OnInit, AfterViewInit {
     private networkAvailability: NetworkAvailabilityToastService,
     private splashScreenService: SplashScreenService,
     private localCourseService: LocalCourseService,
-    private splaschreenDeeplinkActionHandlerDelegate: SplaschreenDeeplinkActionHandlerDelegate
+    private splaschreenDeeplinkActionHandlerDelegate: SplaschreenDeeplinkActionHandlerDelegate,
+    private utils: ApiUtilsService,
+    private networkServ: NetworkService,
+    private localStorage: LocalStorageService,
+    private db: DbService,
+    private loginHandlerService: LoginHandlerService,
+    private segmentationTagService: SegmentationTagService,
+    private mlloader:LoaderService
   ) {
     this.telemetryAutoSync = this.telemetryService.autoSync;
   }
 
   ngOnInit() {
     this.platform.ready().then(async () => {
+      this.isForeground = true;
+      window['segmentation'] = SBTagModule.instance;
+      if (!window['segmentation'].isInitialised) {
+        window['segmentation'].init();
+      }
       this.formAndFrameworkUtilService.init();
       this.networkAvailability.init();
       this.fcmTokenWatcher(); // Notification related
@@ -114,6 +146,12 @@ export class AppComponent implements OnInit, AfterViewInit {
       this.receiveNotification();
       this.utilityService.getDeviceSpec()
         .then((deviceSpec) => {
+          let devSpec = {
+            id: deviceSpec.id,
+            os: deviceSpec.os,
+            make: deviceSpec.make
+          };
+          window['segmentation'].SBTagService.pushTag(devSpec, TagPrefixConstants.DEVICE_CONFIG, true);
           this.telemetryGeneratorService.genererateAppStartTelemetry(deviceSpec);
         });
       this.generateNetworkTelemetry();
@@ -123,6 +161,7 @@ export class AppComponent implements OnInit, AfterViewInit {
       this.saveDefaultSyncSetting();
       this.checkAppUpdateAvailable();
       this.makeEntryInSupportFolder();
+      await this.commonUtilService.populateGlobalCData();
       await this.getSelectedLanguage();
       await this.getDeviceProfile();
       if (this.appGlobalService.getUserId()) {
@@ -137,9 +176,16 @@ export class AppComponent implements OnInit, AfterViewInit {
       this.statusBar.styleBlackTranslucent();
       this.handleBackButton();
       this.appRatingService.checkInitialDate();
-      this.getUtmParameter();
+      this.getCampaignParameter();
       this.checkForCodeUpdates();
       this.checkAndroidWebViewVersion();
+      await this.checkForTheme();
+      this.onTraceIdUpdate();
+      this.utils.initilizeML();
+      this.networkServ.netWorkCheck();
+      await this.applyJoyfulTheme();
+      // this.tagManagerInstance = SBTagModule.instance;
+      // this.tagManagerInstance.init();
     });
 
     this.headerService.headerConfigEmitted$.subscribe(config => {
@@ -153,10 +199,31 @@ export class AppComponent implements OnInit, AfterViewInit {
       } else {
         this.addNetworkTelemetry(InteractSubtype.INTERNET_DISCONNECTED, pageId);
       }
+    })
+    cordova.plugins.notification.local.on("click", (notification) => {
+      var objects = notification.data;
+      // My data is now available in objects.heading, objects.subheading and so on.
+      this.segmentationTagService.localNotificationId = notification.id;
+      this.segmentationTagService.handleLocalNotificationTap();
     });
+
+    if (cordova.plugins.notification && cordova.plugins.notification.local &&
+      cordova.plugins.notification.local.launchDetails && cordova.plugins.notification.local.launchDetails.action === 'click') {
+      const corRelationList: Array<CorrelationData> = [];
+      this.segmentationTagService.localNotificationId = cordova.plugins.notification.local.launchDetails.id;
+
+      corRelationList.push({ id: this.segmentationTagService.localNotificationId ? this.segmentationTagService.localNotificationId + '' : '', type: CorReleationDataType.NOTIFICATION_ID });
+      this.telemetryGeneratorService.generateNotificationClickedTelemetry(
+        InteractType.LOCAL,   
+        this.activePageService.computePageId(this.router.url),
+        undefined,
+        corRelationList
+      );
+    }
     this.notificationSrc.setupLocalNotification();
 
     this.triggerSignInEvent();
+    this.segmentationTagService.getPersistedSegmentaion();
   }
 
   // TODO: make this as private
@@ -178,13 +245,17 @@ export class AppComponent implements OnInit, AfterViewInit {
           }
         });
       })
-      .catch(function (error) { });
+      .catch(function (error) { 
+        console.error(error);
+      });
   }
 
   openPlaystore() {
     plugins['webViewChecker'].openGooglePlayPage()
       .then(function () { })
-      .catch(function (error) { });
+      .catch(function (error) { 
+        console.error(error);
+      });
 
     this.telemetryGeneratorService.generateInteractTelemetry(
       InteractType.TOUCH,
@@ -199,11 +270,10 @@ export class AppComponent implements OnInit, AfterViewInit {
     };
     this.systemSettingsService.getSystemSettings(getSystemSettingsRequest).toPromise()
       .then((res: SystemSettings) => {
-        //   res['deploymentKey'] = '6Xhfs4-WVV8dhYN9U5OkZw6PukglrykIsJ8-B';
         if (res && res.value) {
           const value = JSON.parse(res.value);
           if (value.deploymentKey) {
-            this.codePushExperimentService.setDefaultDeploymentKey(res.value).subscribe();
+            this.preferences.putString(PreferenceKey.DEPLOYMENT_KEY, value.deploymentKey).subscribe();
           }
         }
       }).catch(err => {
@@ -222,7 +292,7 @@ export class AppComponent implements OnInit, AfterViewInit {
           this.syncStatus(status);
         }), {
           deploymentKey
-        }, this.downloadProgress);
+        }, (progress) => this.downloadProgress(progress));
       } else {
         this.telemetryGeneratorService.generateInteractTelemetry(InteractType.OTHER, InteractSubtype.HOTCODE_PUSH_KEY_NOT_DEFINED,
           Environment.HOME, PageId.HOME);
@@ -246,7 +316,17 @@ export class AppComponent implements OnInit, AfterViewInit {
     }
   }
 
+  private downloadProgress(downloadProgress) {
+    if (downloadProgress) {
+      console.log('Downloading ' + downloadProgress.receivedBytes + ' of ' +
+        downloadProgress.totalBytes);
+    }
+  }
+
   private checkForExperiment() {
+    if (codePush === null) {
+      return;
+    }
     /**
      * TODO
      * call the update
@@ -276,13 +356,6 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
   }
 
-  private downloadProgress(downloadProgress) {
-    if (downloadProgress) {
-      console.log('Downloading ' + downloadProgress.receivedBytes + ' of ' +
-        downloadProgress.totalBytes);
-    }
-  }
-
   /* Generates new FCM Token if not available
    * if available then on token refresh updates FCM token
    */
@@ -308,33 +381,54 @@ export class AppComponent implements OnInit, AfterViewInit {
   /* Notification data will be received in data variable
    * can take action on data variable
    */
-  private receiveNotification() {
-    FCMPlugin.onNotification((data) => {
-      if (data.wasTapped) {
-        // Notification was received on device tray and tapped by the user.
-      } else {
-        // Notification was received in foreground. Maybe the user needs to be notified.
-      }
-
-      const value = {
-        notification_id: data.id
-      };
+  private async receiveNotification() {
+    const val = await this.preferences.getString(PreferenceKey.NOTIFICAITON_RECEIVED_AT).toPromise();
+    if (val) {
+      const corRelationList: Array<CorrelationData> = [];
+      corRelationList.push({ id: val, type: CorReleationDataType.NOTIFICATION_RECEIVED_AT });
       this.telemetryGeneratorService.generateInteractTelemetry(
-        InteractType.OTHER,
-        InteractSubtype.NOTIFICATION_RECEIVED,
+        InteractType.FCM,
+        '',
         Environment.HOME,
         this.activePageService.computePageId(this.router.url),
         undefined,
-        value
+        undefined,
+        undefined,
+        corRelationList,
+        ID.NOTIFICATION_RECEIVED
       );
-
+      await this.preferences.putString(PreferenceKey.NOTIFICAITON_RECEIVED_AT, '').toPromise();
+    }
+    FCMPlugin.onNotification((data) => {
       data['isRead'] = data.wasTapped ? 1 : 0;
       data['actionData'] = JSON.parse(data['actionData']);
       this.notificationServices.addNotification(data).subscribe((status) => {
         this.events.publish('notification:received');
         this.events.publish('notification-status:update', { isUnreadNotifications: true });
       });
-      this.notificationSrc.setNotificationDetails(data);
+      if (data.wasTapped) {
+        // Notification was received on device tray and tapped by the user.
+        const value = {
+          notification_id: data.id
+        };
+        const corRelationList: Array<CorrelationData> = [];
+        const fcmId = data.id;
+        corRelationList.push({ id: fcmId ? fcmId + '' : '', type: CorReleationDataType.NOTIFICATION_ID });
+        this.telemetryGeneratorService.generateNotificationClickedTelemetry(
+          InteractType.FCM,
+          this.activePageService.computePageId(this.router.url),
+          value,
+          corRelationList
+        );
+        this.notificationSrc.notificationId = data.id || '';
+        this.notificationSrc.setNotificationParams(data);
+        if (this.isForeground) {
+          this.notificationSrc.handleNotification();
+        }
+      } else {
+        // Notification was received in foreground. Maybe the user needs to be notified.
+      }
+
     },
       (success) => {
         console.log('Notification Sucess Callback', success);
@@ -348,27 +442,39 @@ export class AppComponent implements OnInit, AfterViewInit {
    * Initializing the event for reloading the Tabs on Signing-In.
    */
   private triggerSignInEvent() {
-    this.events.subscribe(EventTopics.SIGN_IN_RELOAD, async () => {
+    this.events.subscribe(EventTopics.SIGN_IN_RELOAD, async (skipNavigation) => {
       const batchDetails = await this.preferences.getString(PreferenceKey.BATCH_DETAIL_KEY).toPromise();
       const limitedSharingContentDetails = this.appGlobalService.limitedShareQuizContent;
 
       if (!batchDetails && !limitedSharingContentDetails) {
+        if (this.routerOutlet) {
+          this.routerOutlet.deactivate();
+        }
         this.toggleRouterOutlet = false;
       }
 
-      // this.toggleRouterOutlet = false;
       // This setTimeout is very important for reloading the Tabs page on SignIn.
       setTimeout(async () => {
-        this.events.publish(AppGlobalService.USER_INFO_UPDATED);
+        /* Medatory for login flow
+         * eventParams are essential parameters for avoiding duplicate calls to API
+         * skipSession & skipProfile should be true here
+         * until further change
+         */
+        const eventParams: EventParams = {
+          skipSession: true,
+          skipProfile: true
+        };
+        this.events.publish(AppGlobalService.USER_INFO_UPDATED, eventParams);
         this.toggleRouterOutlet = true;
         this.reloadSigninEvents();
-        this.events.publish('UPDATE_TABS');
+        this.db.createDb()
+        this.events.publish('UPDATE_TABS', skipNavigation);
         if (batchDetails) {
           await this.localCourseService.checkCourseRedirect();
-        } else {
+        } else if (!skipNavigation || !skipNavigation.skipRootNavigation) {
           this.router.navigate([RouterLinks.TABS]);
         }
-      }, 0);
+      }, 100);
     });
   }
 
@@ -381,6 +487,14 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   reloadGuestEvents() {
     this.checkDeviceLocation();
+    this.checkGuestUserType();
+  }
+
+  private async checkGuestUserType() {
+    const isAdminUser = (await this.preferences.getString(PreferenceKey.SELECTED_USER_TYPE).toPromise() === ProfileType.ADMIN);
+    if (isAdminUser && this.appGlobalService.isGuestUser) {
+      this.loginHandlerService.signIn();
+    }
   }
 
   addNetworkTelemetry(subtype: string, pageId: string) {
@@ -393,36 +507,47 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   ngAfterViewInit(): void {
     this.platform.resume.subscribe(() => {
-      this.telemetryGeneratorService.generateInterruptTelemetry('resume', '');
+      if (!this.appGlobalService.isNativePopupVisible) {
+        this.telemetryGeneratorService.generateInterruptTelemetry('resume', '');
+      }
       this.splashScreenService.handleSunbirdSplashScreenActions();
       this.checkForCodeUpdates();
+      this.notificationSrc.handleNotification();
+      this.isForeground = true;
+      this.segmentationTagService.getPersistedSegmentaion();
     });
 
     this.platform.pause.subscribe(() => {
-      this.telemetryGeneratorService.generateInterruptTelemetry('background', '');
+      if (!this.appGlobalService.isNativePopupVisible) {
+        this.telemetryGeneratorService.generateInterruptTelemetry('background', '');
+      }
+      this.isForeground = false;
+      this.segmentationTagService.persistSegmentation();
     });
   }
 
   private handleBackButton() {
     this.router.events.subscribe((event: Event) => {
       if (event instanceof NavigationStart) {
-        // Show loading indicator
         this.rootPageDisplayed = event.url.indexOf('tabs') !== -1;
       }
     });
     this.platform.backButton.subscribeWithPriority(0, async () => {
       if (this.router.url === RouterLinks.LIBRARY_TAB || this.router.url === RouterLinks.COURSE_TAB
+        || this.router.url === RouterLinks.HOME_TAB || (this.router.url === RouterLinks.SEARCH && !this.appGlobalService.isDiscoverBackEnabled)
         || this.router.url === RouterLinks.DOWNLOAD_TAB || this.router.url === RouterLinks.PROFILE_TAB ||
         this.router.url === RouterLinks.GUEST_PROFILE_TAB || this.router.url === RouterLinks.ONBOARDING_DISTRICT_MAPPING
-      ) {
+        || this.router.url.startsWith(RouterLinks.HOME_TAB)) {
         if (await this.menuCtrl.isOpen()) {
           this.menuCtrl.close();
         } else {
           this.commonUtilService.showExitPopUp(this.activePageService.computePageId(this.router.url), Environment.HOME, false);
         }
+      } else if ((this.router.url === RouterLinks.SEARCH) && this.appGlobalService.isDiscoverBackEnabled) {
+        this.headerService.sidebarEvent('back');
       } else {
-        // this.routerOutlet.pop();
         if (this.location.back && !this.rootPageDisplayed) {
+          this.mlloader.stopLoader()
           this.location.back();
         }
       }
@@ -437,18 +562,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   private subscribeEvents() {
-    this.events.subscribe(EventTopics.COACH_MARK_SEEN, (data) => {
-      this.showWalkthroughBackDrop = data.showWalkthroughBackDrop;
-      setTimeout(() => {
-        const backdropClipCenter = document.getElementById('qrScannerIcon').getBoundingClientRect().left +
-          ((document.getElementById('qrScannerIcon').getBoundingClientRect().width) / 2);
-        (document.getElementById('backdrop').getElementsByClassName('bg')[0] as HTMLDivElement).setAttribute(
-          'style',
-          `background-image: radial-gradient(circle at ${backdropClipCenter}px 56px, rgba(0, 0, 0, 0) 30px, rgba(0, 0, 0, 0.9) 30px);`
-        );
-      }, 2000);
-      this.appName = data.appName;
-    });
     this.events.subscribe(EventTopics.TAB_CHANGE, (pageId) => {
       this.zone.run(() => {
         this.generateInteractEvent(pageId);
@@ -466,6 +579,59 @@ export class AppComponent implements OnInit, AfterViewInit {
         document.documentElement.dir = 'ltr';
       }
     });
+    // planned maintenance
+    this.eventSubscription = this.eventsBusService.events(EventNamespace.ERROR).pipe(
+      filter((event) => event.type === ErrorEventType.PLANNED_MAINTENANCE_PERIOD),
+      take(1)
+    ).subscribe(() => {
+      this.isPlannedMaintenanceStarted = true;
+      this.isOnBoardingCompleted = this.appGlobalService.isOnBoardingCompleted;
+      if (this.isPlannedMaintenanceStarted) {
+        this.telemetryGeneratorService.generateImpressionTelemetry(
+          ImpressionType.VIEW,
+          '',
+          PageId.PLANNED_MAINTENANCE_BANNER,
+          this.isOnBoardingCompleted ? Environment.HOME : Environment.ONBOARDING
+        );
+        let intervalRef;
+        const backButtonSubscription = this.platform.backButton.subscribeWithPriority(13, () => {
+          backButtonSubscription.unsubscribe();
+          this.isPlannedMaintenanceStarted = false;
+          if (intervalRef) {
+            clearInterval(intervalRef);
+            intervalRef = undefined;
+          }
+        });
+        // for timer optional
+        // const second = 1000,
+        //     minute = second * 60,
+        //     hour = minute * 60,
+        //     day = hour * 24;
+        //
+        // const countDown = new Date('Aug 14, 2020 00:00:00').getTime();
+        // intervalRef = setInterval(() => {
+        //   this.isTimeAvailable = true;
+        //   const now = new Date().getTime(),
+        //           distance = countDown - now;
+        //
+        //       document.getElementById('timer').innerText = `${Math.floor((distance % (day)) / (hour))} : ${Math.floor((distance % (hour)) / (minute))} : ${Math.floor((distance % (minute)) / second)}`;
+        //
+        //     }, second);
+      }
+    });
+    // unplanned maintenance
+    // this.events.subscribe('EventTopics:maintenance:unplanned', (data) => {
+    //   this.isUnplannedMaintenanceStarted = data.isUnplannedMaintenanceStarted;
+    //   if (this.isUnplannedMaintenanceStarted) {
+    //     this.timeLeft = '3';
+    //     window.document.body.classList.add('show-maintenance');
+    //   }
+    // });
+  }
+
+  closeUnPlannedMaintenanceBanner() {
+    window.document.body.classList.remove('show-maintenance');
+    this.isUnplannedMaintenanceStarted = false;
   }
 
   private generateInteractEvent(pageId: string) {
@@ -476,16 +642,21 @@ export class AppComponent implements OnInit, AfterViewInit {
       pageId ? pageId.toLowerCase() : PageId.QRCodeScanner);
   }
 
-  private generateImpressionEvent(pageId: string) {
+  private async generateImpressionEvent(pageId: string) {
     pageId = pageId.toLowerCase();
     const env = pageId.localeCompare(PageId.PROFILE) ? Environment.HOME : Environment.USER;
     const corRelationList: Array<CorrelationData> = [];
-    if (pageId === 'resources') {
+    if (pageId === PageId.LIBRARY) {
       const currentProfile: Profile = this.appGlobalService.getCurrentUser();
       corRelationList.push({ id: currentProfile.board ? currentProfile.board.join(',') : '', type: CorReleationDataType.BOARD });
       corRelationList.push({ id: currentProfile.medium ? currentProfile.medium.join(',') : '', type: CorReleationDataType.MEDIUM });
       corRelationList.push({ id: currentProfile.grade ? currentProfile.grade.join(',') : '', type: CorReleationDataType.CLASS });
       corRelationList.push({ id: currentProfile.profileType, type: CorReleationDataType.USERTYPE });
+    } else if (pageId === PageId.COURSES) {
+      const channelId = await this.preferences.getString(PreferenceKey.PAGE_ASSEMBLE_ORGANISATION_ID).toPromise();
+      if (channelId) {
+        corRelationList.push({ id: channelId, type: CorReleationDataType.SOURCE });
+      }
     }
 
     this.telemetryGeneratorService.generateImpressionTelemetry(
@@ -517,8 +688,9 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   private async getSelectedLanguage() {
     const selectedLanguage = await this.preferences.getString(PreferenceKey.SELECTED_LANGUAGE_CODE).toPromise();
+    window['segmentation'].SBTagService.pushTag([selectedLanguage], TagPrefixConstants.USER_LANG, true);
     if (selectedLanguage) {
-      await this.translate.use(selectedLanguage).toPromise();
+      await this.translate.use(selectedLanguage);
     }
   }
 
@@ -617,6 +789,8 @@ export class AppComponent implements OnInit, AfterViewInit {
       const routeUrl = this.router.url;
 
       if ((routeUrl.indexOf(RouterLinks.USER_TYPE_SELECTION) !== -1)
+        || (routeUrl.indexOf(RouterLinks.CHAPTER_DETAILS) !== -1)
+        || (routeUrl.indexOf(RouterLinks.CURRICULUM_COURSES) !== -1)
         || (routeUrl.indexOf(RouterLinks.ACTIVE_DOWNLOADS) !== -1)
         || (routeUrl.indexOf(RouterLinks.COLLECTION_DETAIL_ETB) !== -1)
         || (routeUrl.indexOf(RouterLinks.COLLECTION_DETAILS) !== -1)
@@ -629,17 +803,20 @@ export class AppComponent implements OnInit, AfterViewInit {
         || (routeUrl.indexOf(RouterLinks.EXPLORE_BOOK) !== -1)
         || (routeUrl.indexOf(RouterLinks.PERMISSION) !== -1)
         || (routeUrl.indexOf(RouterLinks.LANGUAGE_SETTING) !== -1)
-        || (routeUrl.indexOf(RouterLinks.SHARE_USER_AND_GROUPS) !== -1)
+        || (routeUrl.indexOf(RouterLinks.MY_GROUPS) !== -1)
+        || (routeUrl.indexOf(`${RouterLinks.PROJECT}/${RouterLinks.DETAILS}`) !== -1)
       ) {
         this.headerService.sidebarEvent($event);
         return;
       } else {
         if (this.router.url === RouterLinks.LIBRARY_TAB || this.router.url === RouterLinks.COURSE_TAB
+          || this.router.url === RouterLinks.HOME_TAB || (this.router.url === RouterLinks.SEARCH_TAB && !this.appGlobalService.isDiscoverBackEnabled)
           || this.router.url === RouterLinks.DOWNLOAD_TAB || this.router.url === RouterLinks.PROFILE_TAB ||
-          this.router.url === RouterLinks.GUEST_PROFILE_TAB) {
+          this.router.url === RouterLinks.GUEST_PROFILE_TAB || this.router.url.startsWith(RouterLinks.HOME_TAB)) {
           this.commonUtilService.showExitPopUp(this.activePageService.computePageId(this.router.url), Environment.HOME, false).then();
+        } else if (this.router.url === RouterLinks.SEARCH_TAB && this.appGlobalService.isDiscoverBackEnabled) {
+          this.headerService.sidebarEvent($event);
         } else {
-          // this.routerOutlet.pop();
           if (this.location.back) {
             this.location.back();
           }
@@ -652,25 +829,15 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   menuItemAction(menuName) {
     switch (menuName.menuItem) {
-      case 'USERS_AND_GROUPS':
+      case 'MY_GROUPS':
         this.telemetryGeneratorService.generateInteractTelemetry(
           InteractType.TOUCH,
-          InteractSubtype.USER_GROUP_CLICKED,
+          InteractSubtype.MY_GROUPS_CLICKED,
           Environment.USER,
           PageId.PROFILE
         );
         const navigationExtrasUG: NavigationExtras = { state: { profile: this.profile } };
-        this.router.navigate([`/${RouterLinks.USER_AND_GROUPS}`], navigationExtrasUG);
-        break;
-
-      case 'REPORTS':
-        this.telemetryGeneratorService.generateInteractTelemetry(
-          InteractType.TOUCH,
-          InteractSubtype.REPORTS_CLICKED,
-          Environment.USER,
-          PageId.PROFILE);
-        const navigationExtrasReports: NavigationExtras = { state: { profile: this.profile } };
-        this.router.navigate([`/${RouterLinks.REPORTS}`], navigationExtrasReports);
+        this.router.navigate([`/${RouterLinks.MY_GROUPS}`], navigationExtrasUG);
         break;
 
       case 'SETTINGS': {
@@ -706,9 +873,23 @@ export class AppComponent implements OnInit, AfterViewInit {
           this.commonUtilService.showToast('NEED_INTERNET_TO_CHANGE');
         } else {
           this.logoutHandlerService.onLogout();
+          this.localStorage.deleteAllStorage();
         }
         break;
 
+      case 'UPDATE':
+        cordova.plugins.InAppUpdateManager.checkForImmediateUpdate(
+          () => { },
+          () => { }
+        );
+        break;
+
+      case 'IMPORT':
+        this.utilityService.openFileManager().then((success) => {
+          console.log('-----openFileManager-----', success);
+        }).catch((err) => {
+          console.log('---------error------', err);
+        });
     }
   }
 
@@ -737,26 +918,28 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
   }
 
-  private getUtmParameter() {
-    this.utilityService.getUtmInfo()
-      .then(response => {
-        if (response) {
-          if (response.val && response.val.length) {
-            this.splaschreenDeeplinkActionHandlerDelegate.checkUtmContent(response.val);
-          }
-          const utmTelemetry = {
-            utm_data: response
-          };
-          this.telemetryGeneratorService.generateInteractTelemetry(
-            InteractType.OTHER,
-            InteractSubtype.UTM_INFO,
-            Environment.HOME,
-            PageId.HOME,
-            undefined,
-            utmTelemetry);
-          this.utilityService.clearUtmInfo();
+  private getCampaignParameter() {
+    this.preferences.getString(PreferenceKey.CAMPAIGN_PARAMETERS).toPromise().then((data) => {
+      if (data) {
+        const response = JSON.parse(data);
+        const utmValue = response['val'];
+        if (response.val && response.val.length) {
+          this.splaschreenDeeplinkActionHandlerDelegate.checkUtmContent(response.val);
         }
-      })
+        const utmTelemetry = {
+          utm_data: utmValue
+        };
+        this.telemetryGeneratorService.generateInteractTelemetry(
+          InteractType.OTHER,
+          InteractSubtype.UTM_INFO,
+          Environment.HOME,
+          PageId.HOME,
+          undefined,
+          utmTelemetry,
+          undefined);
+        this.utilityService.clearUtmInfo();
+      }
+    })
       .catch(error => {
         console.log('Error is', error);
       });
@@ -802,4 +985,37 @@ export class AppComponent implements OnInit, AfterViewInit {
     }
   }
 
+  navigateToDownloads() {
+    this.isPlannedMaintenanceStarted = false;
+    this.router.navigate([RouterLinks.DOWNLOAD_TAB]);
+  }
+
+
+  closePlannedMaintenanceBanner() {
+    this.isPlannedMaintenanceStarted = false;
+  }
+
+  private async checkForTheme() {
+    const selectedTheme = await this.preferences.getString(PreferenceKey.CURRENT_SELECTED_THEME).toPromise();
+    if (selectedTheme === AppThemes.JOYFUL) {
+      await this.headerService.showStatusBar();
+    } else {
+      this.headerService.hideStatusBar();
+    }
+  }
+
+  private onTraceIdUpdate() {
+    this.preferences.addListener(CsClientStorage.TRACE_ID, (value) => {
+      if (value) {
+        // show toast
+      } else {
+        // do not show the toast.
+      }
+    });
+  }
+
+  async applyJoyfulTheme() {
+      await this.preferences.putString('current_selected_theme', AppThemes.JOYFUL).toPromise();
+      this.headerService.showStatusBar();
+  }
 }

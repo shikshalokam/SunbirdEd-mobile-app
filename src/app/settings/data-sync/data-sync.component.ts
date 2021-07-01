@@ -1,28 +1,18 @@
-import { Component, OnInit, NgZone, Inject, ChangeDetectorRef } from '@angular/core';
-import {
-  TelemetrySyncStat,
-  TelemetryService,
-  TelemetryImpressionRequest,
-  TelemetryAutoSyncModes,
-  ArchiveService,
-  ArchiveObjectType
-} from 'sunbird-sdk';
-import { CommonUtilService } from 'services/common-util.service';
-import { TelemetryGeneratorService } from 'services/telemetry-generator.service';
-
-import {
-  PageId,
-  Environment,
-  ImpressionType,
-  InteractType,
-  InteractSubtype
-} from 'services/telemetry-constants';
-import { SocialSharing } from '@ionic-native/social-sharing/ngx';
 import { Location } from '@angular/common';
+import { ChangeDetectorRef, Component, Inject, NgZone, OnInit } from '@angular/core';
+import {
+  CommonUtilService, Environment,
+  ImpressionType,
+  InteractSubtype, InteractType, PageId, TelemetryGeneratorService
+} from '@app/services';
+import { SocialSharing } from '@ionic-native/social-sharing/ngx';
 import { Platform } from '@ionic/angular';
-import { Subscription, Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
-import * as dayjs from 'dayjs';
+import {
+  ArchiveObjectType, ArchiveService,
+  ObjectNotFoundError, TelemetryAutoSyncModes, TelemetryImpressionRequest, TelemetryService
+} from 'sunbird-sdk';
 
 declare const cordova;
 
@@ -38,6 +28,7 @@ export class DataSyncComponent implements OnInit {
   dataSyncType?: TelemetryAutoSyncModes;
   OPTIONS = TelemetryAutoSyncModes;
   backButtonFunc: Subscription;
+  loader: any;
 
   constructor(
     @Inject('TELEMETRY_SERVICE') private telemetryService: TelemetryService,
@@ -51,23 +42,23 @@ export class DataSyncComponent implements OnInit {
     private platform: Platform
   ) {
     this.lastSyncDateTime = this.telemetryService.lastSyncedTimestamp().pipe(
-        map((ts) => {
-          if (ts) {
-            return dayjs(ts).format('DD/MM/YYYY, hh:mm a');
-          }
+      map((ts) => {
+        if (ts) {
+          return window.dayjs(ts).format('DD/MM/YYYY, hh:mm a');
+        }
 
-          return undefined;
-        }),
-        tap(() => {
-          this.changeDetectionRef.detectChanges();
-        })
+        return undefined;
+      }),
+      tap(() => {
+        this.changeDetectionRef.detectChanges();
+      })
     );
   }
 
-  async init() {
+  private async init() {
     this.zone.run(async () => {
       this.dataSyncType = (
-          await this.telemetryService.autoSync.getSyncMode().toPromise() as TelemetryAutoSyncModes | undefined
+        await this.telemetryService.autoSync.getSyncMode().toPromise() as TelemetryAutoSyncModes | undefined
       ) || TelemetryAutoSyncModes.ALWAYS_ON;
     });
   }
@@ -83,6 +74,7 @@ export class DataSyncComponent implements OnInit {
       PageId.SETTINGS_DATASYNC,
       Environment.SETTINGS, '', '', ''
     );
+    this.handleBackButton();
   }
 
   onSelected() {
@@ -92,7 +84,7 @@ export class DataSyncComponent implements OnInit {
     }
   }
 
-  generateSyncTypeInteractTelemetry(dataSyncType: string) {
+  private generateSyncTypeInteractTelemetry(dataSyncType: string) {
     const value = new Map();
     value['dataSyncType'] = dataSyncType;
     this.telemetryGeneratorService.generateInteractTelemetry(
@@ -113,72 +105,87 @@ export class DataSyncComponent implements OnInit {
       Environment.SETTINGS,
       PageId.SETTINGS_DATASYNC,
       undefined);
+
+    try {
+      await this.telemetryService.sync({
+        ignoreAutoSyncMode: false,
+        ignoreSyncThreshold: true
+      }).toPromise();
+    } catch (e) {
+    }
+
     return this.archiveService.export(
-      { objects: [{ type: ArchiveObjectType.TELEMETRY }],
-      filePath: cordova.file.externalCacheDirectory + '/tmp' })
-        .toPromise()
-        .then(async (r) => {
-          await loader.dismiss();
-          return this.social.share('', '', r.filePath, '');
-        })
-        .catch(async (e) => {
-          console.error(e);
-          await loader.dismiss();
-          this.commonUtilService.showToast('SHARE_TELEMETRY_FAILED');
-        });
-  }
-
-  async onSyncClick() {
-    const that = this;
-    const loader = await this.commonUtilService.getLoader();
-    await loader.present();
-    this.generateInteractEvent(InteractType.TOUCH, InteractSubtype.MANUALSYNC_INITIATED, null);
-    this.telemetryService.sync({
-      ignoreAutoSyncMode: true,
-      ignoreSyncThreshold: true
-    }).subscribe((syncStat: TelemetrySyncStat) => {
-        that.zone.run(async () => {
-          if (syncStat.error) {
-            await loader.dismiss();
-            this.commonUtilService.showToast('DATA_SYNC_FAILURE');
-            console.error('Telemetry Data Sync Error: ', syncStat);
-            return;
-          } else if (!syncStat.syncedEventCount) {
-            await loader.dismiss();
-            this.commonUtilService.showToast('DATA_SYNC_NOTHING_TO_SYNC');
-            console.error('Telemetry Data Sync Error: ', syncStat);
-            return;
-          }
-
-          this.generateInteractEvent(InteractType.OTHER, InteractSubtype.MANUALSYNC_SUCCESS, syncStat.syncedFileSize);
-          await loader.dismiss();
-          this.commonUtilService.showToast('DATA_SYNC_SUCCESSFUL');
-          console.log('Telemetry Data Sync Success: ', syncStat);
-        });
-      }, async (error) => {
+      {
+        objects: [{ type: ArchiveObjectType.TELEMETRY }],
+        filePath: cordova.file.externalCacheDirectory + '/tmp'
+      })
+      .toPromise()
+      .then(async (r) => {
         await loader.dismiss();
-        this.commonUtilService.showToast('DATA_SYNC_FAILURE');
-        console.error('Telemetry Data Sync Error: ', error);
+        return this.social.share('', '', r.filePath, '');
+      })
+      .catch(async (e) => {
+        await loader.dismiss();
+
+        if (e instanceof ObjectNotFoundError) {
+          this.commonUtilService.showToast('SHARE_TELEMETRY_NO_DATA_FOUND');
+        } else {
+          this.commonUtilService.showToast('SHARE_TELEMETRY_FAILED');
+        }
       });
   }
 
-  generateInteractEvent(interactType: string, subtype: string, size: number) {
+  async onSyncClick() {
+    this.loader = await this.commonUtilService.getLoader();
+    await this.loader.present();
+    this.generateInteractEvent(InteractType.TOUCH, InteractSubtype.SYNC_NOW_CLICKED, null);
+    this.telemetryService.sync({
+      ignoreAutoSyncMode: true,
+      ignoreSyncThreshold: true
+    }).subscribe();
+
+    sbsync.onSyncSucces(async (syncStat) => {
+      if (syncStat.telemetry_error) {
+        if (this.loader) {
+          await this.loader.dismiss();
+        }
+
+        this.commonUtilService.showToast('DATA_SYNC_FAILURE');
+        return;
+      } else if (!syncStat.syncedEventCount) {
+        if (this.loader) {
+          await this.loader.dismiss();
+        }
+        this.commonUtilService.showToast('DATA_SYNC_NOTHING_TO_SYNC');
+        return;
+      }
+
+      this.generateInteractEvent(InteractType.OTHER, InteractSubtype.MANUALSYNC_SUCCESS, syncStat.syncedFileSize);
+      if (this.loader) {
+        await this.loader.dismiss();
+      }
+      this.commonUtilService.showToast('DATA_SYNC_SUCCESSFUL');
+    }, async (error) => {
+      if (this.loader) {
+        await this.loader.dismiss();
+      }
+      this.commonUtilService.showToast('DATA_SYNC_FAILURE');
+    });
+  }
+
+  private generateInteractEvent(interactType: string, subtype: string, size: number) {
     /*istanbul ignore else */
-    if (size != null) {
       this.telemetryGeneratorService.generateInteractTelemetry(
         interactType,
         subtype,
         Environment.SETTINGS,
         PageId.SETTINGS_DATASYNC,
         undefined,
-        {
-          SizeOfFileInKB: (size / 1000) + ''
-        }
+        size ? { SizeOfFileInKB: (size / 1000) + '' } : undefined
       );
-    }
   }
 
-  handleBackButton() {
+  private handleBackButton() {
     this.backButtonFunc = this.platform.backButton.subscribeWithPriority(10, () => {
       this.telemetryGeneratorService.generateBackClickedTelemetry(PageId.SETTINGS_DATASYNC, Environment.SETTINGS, false);
       this.location.back();

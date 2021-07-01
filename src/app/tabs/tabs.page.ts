@@ -1,12 +1,16 @@
-import { ProfileType, SharedPreferences, ProfileService } from 'sunbird-sdk';
-import { GUEST_TEACHER_TABS, initTabs, GUEST_STUDENT_TABS, LOGIN_TEACHER_TABS } from '@app/app/module.service';
-import { Component, ViewChild, ViewEncapsulation, Inject, OnInit, AfterViewInit } from '@angular/core';
-import { IonTabs, Events, ToastController } from '@ionic/angular';
-import { ContainerService } from '@app/services/container.services';
-import { AppGlobalService } from '@app/services/app-global-service.service';
-import { ProfileConstants, EventTopics } from '@app/app/app.constant';
-import { CommonUtilService } from '@app/services/common-util.service';
+import { AfterViewInit, Component, Inject, OnInit, ViewChild, ViewEncapsulation } from '@angular/core';
+import { Router } from '@angular/router';
+import { EventTopics, PreferenceKey, ProfileConstants, RouterLinks, SwitchableTabsConfig } from '@app/app/app.constant';
+import { GUEST_HOME_SEARCH_TABS, GUEST_STUDENT_TABS, GUEST_TEACHER_TABS, initTabs,
+  LOGGEDIN_HOME_SEARCH_TABS, LOGIN_ADMIN_TABS, LOGIN_TEACHER_TABS } from '@app/app/module.service';
+import { OnTabViewWillEnter } from '@app/app/tabs/on-tab-view-will-enter';
 import { PageId } from '@app/services';
+import { AppGlobalService } from '@app/services/app-global-service.service';
+import { CommonUtilService } from '@app/services/common-util.service';
+import { ContainerService } from '@app/services/container.services';
+import { IonTabs, ToastController } from '@ionic/angular';
+import { Events } from '@app/util/events';
+import { ProfileService, ProfileType, SharedPreferences } from 'sunbird-sdk';
 
 @Component({
   selector: 'app-tabs',
@@ -17,7 +21,7 @@ import { PageId } from '@app/services';
 export class TabsPage implements OnInit, AfterViewInit {
 
   configData: any;
-  @ViewChild('myTabs') tabRef: IonTabs;
+  @ViewChild('tabRef', { static: false }) tabRef: IonTabs;
   tabIndex = 0;
   tabs = [];
   headerConfig = {
@@ -37,6 +41,7 @@ export class TabsPage implements OnInit, AfterViewInit {
     @Inject('SHARED_PREFERENCES') private preferences: SharedPreferences,
     @Inject('PROFILE_SERVICE') private profileService: ProfileService,
     private commonUtilService: CommonUtilService,
+    private router: Router
   ) {
 
   }
@@ -44,14 +49,7 @@ export class TabsPage implements OnInit, AfterViewInit {
   async ngOnInit() {
     this.checkAndroidWebViewVersion();
     const session = await this.appGlobalService.authService.getSession().toPromise();
-    if (!session) {
-      const profileType = this.appGlobalService.guestProfileType;
-      if (profileType === ProfileType.TEACHER) {
-        initTabs(this.container, GUEST_TEACHER_TABS);
-      } else {
-        initTabs(this.container, GUEST_STUDENT_TABS);
-      }
-    } else {
+    if (session) {
       if ((await this.preferences.getString('SHOW_WELCOME_TOAST').toPromise()) === 'true') {
         this.preferences.putString('SHOW_WELCOME_TOAST', 'false').toPromise().then();
 
@@ -59,27 +57,44 @@ export class TabsPage implements OnInit, AfterViewInit {
           userId: session.userToken,
           requiredFields: ProfileConstants.REQUIRED_FIELDS,
         }).toPromise();
-
         this.commonUtilService.showToast(this.commonUtilService.translateMessage('WELCOME_BACK', serverProfile.firstName));
       }
-      initTabs(this.container, LOGIN_TEACHER_TABS);
     }
-
-    this.tabs = this.container.getAllTabs();
-    this.events.subscribe('UPDATE_TABS', () => {
-      this.tabs = this.container.getAllTabs();
+    // initTabs(this.container, await this.getInitialTabs(session));
+    // this.tabs = this.container.getAllTabs();
+    this.refreshTabs();
+    this.events.subscribe('UPDATE_TABS', async (data) => {
+      this.refreshTabs(data);
     });
   }
 
-  ngAfterViewInit() {
-    setTimeout(async () => {
-      const backdropClipCenter = document.getElementById('qrScannerIcon').getBoundingClientRect().left +
-        ((document.getElementById('qrScannerIcon').getBoundingClientRect().width) / 2);
+  private async refreshTabs(data?) {
+    initTabs(this.container, await this.getInitialTabs(await this.appGlobalService.authService.getSession().toPromise()));
+    this.tabs = this.container.getAllTabs();
+    // this.tabRef.outlet['navCtrl'].navigateRoot('/tabs/' + this.tabs[0].root);
+    if (!data || (data && !data.navigateToCourse)) {
+    this.router.navigate(['/tabs/' + this.tabs[0].root]);
+    }
+  }
 
-      (document.getElementById('backdrop').getElementsByClassName('bg')[0] as HTMLDivElement).setAttribute(
-        'style',
-        `background-image: radial-gradient(circle at ${backdropClipCenter}px 56px, rgba(0, 0, 0, 0) 30px, rgba(0, 0, 0, 0.9) 30px);`
-      );
+  ngAfterViewInit() {
+    this.setQRStyles();
+    this.setQRTabRoot(this.tabRef.getSelected());
+  }
+
+  setQRStyles() {
+    setTimeout(async () => {
+      if (document.getElementById('qrScannerIcon') && document.getElementById('backdrop')) {
+        const backdropClipCenter = document.getElementById('qrScannerIcon').getBoundingClientRect().left +
+          ((document.getElementById('qrScannerIcon').getBoundingClientRect().width) / 2);
+
+        (document.getElementById('backdrop').getElementsByClassName('bg')[0] as HTMLDivElement).setAttribute(
+          'style',
+          `background-image: radial-gradient(circle at ${backdropClipCenter}px 56px, rgba(0, 0, 0, 0) 30px, rgba(0, 0, 0, 0.9) 30px);`
+        );
+      } else {
+        this.setQRStyles();
+      }
 
     }, 2000);
   }
@@ -96,11 +111,19 @@ export class TabsPage implements OnInit, AfterViewInit {
   }
 
   ionViewWillEnter() {
+    if (this.tabRef.outlet.component['tabViewWillEnter']) {
+      (this.tabRef.outlet.component as OnTabViewWillEnter).tabViewWillEnter();
+    }
     this.tabs = this.container.getAllTabs();
     this.events.publish('update_header');
     this.events.subscribe('return_course', () => {
       setTimeout(() => {
         this.tabRef.select('courses');
+      }, 300);
+    });
+    this.events.subscribe('to_profile', () => {
+      setTimeout(() => {
+        this.tabRef.select('profile');
       }, 300);
     });
   }
@@ -110,8 +133,7 @@ export class TabsPage implements OnInit, AfterViewInit {
   }
 
   ionTabsDidChange(event: any) {
-    this.tabs[2].root = event.tab;
-    this.events.publish(EventTopics.TAB_CHANGE, event.tab);
+    this.setQRTabRoot(event.tab);
     if (event.tab === 'resources') {
       event.tab = PageId.LIBRARY;
       this.events.publish(EventTopics.TAB_CHANGE, event.tab);
@@ -119,6 +141,7 @@ export class TabsPage implements OnInit, AfterViewInit {
       this.events.publish(EventTopics.TAB_CHANGE, event.tab);
     }
     this.commonUtilService.currentTabName = this.tabRef.getSelected();
+    this.checkOnboardingProfileDetails();
   }
 
   public async onTabClick(tab) {
@@ -128,6 +151,61 @@ export class TabsPage implements OnInit, AfterViewInit {
       } else {
         this.commonUtilService.showToast('AVAILABLE_FOR_TEACHERS', false, 'sb-toast available-later');
       }
+    }
+  }
+
+  async checkOnboardingProfileDetails() {
+    if (!this.appGlobalService.isUserLoggedIn() && !this.appGlobalService.isOnBoardingCompleted) {
+      this.router.navigate([`/${RouterLinks.PROFILE_SETTINGS}`], {
+        state: {
+          hideBackButton: true
+        }
+      });
+    }
+  }
+
+  private setQRTabRoot(tab: string) {
+    if (this.tabs && this.tabs[2]) {
+      this.tabs[2].root = tab;
+    }
+  }
+
+  private async getInitialTabs(session): Promise<any[]> {
+    const config = {
+      'GUEST_TEACHER': {
+        [SwitchableTabsConfig.RESOURCE_COURSE_TABS_CONFIG]: GUEST_TEACHER_TABS,
+        [SwitchableTabsConfig.HOME_DISCOVER_TABS_CONFIG]: GUEST_HOME_SEARCH_TABS
+      },
+      'GUEST_STUDENT': {
+        [SwitchableTabsConfig.RESOURCE_COURSE_TABS_CONFIG]: GUEST_STUDENT_TABS,
+        [SwitchableTabsConfig.HOME_DISCOVER_TABS_CONFIG]: GUEST_HOME_SEARCH_TABS
+      },
+      'LOGIN_USER': {
+        [SwitchableTabsConfig.RESOURCE_COURSE_TABS_CONFIG]: LOGIN_TEACHER_TABS,
+        [SwitchableTabsConfig.HOME_DISCOVER_TABS_CONFIG]: LOGGEDIN_HOME_SEARCH_TABS
+      },
+      'LOGIN_ADMIN': {
+        [SwitchableTabsConfig.RESOURCE_COURSE_TABS_CONFIG]: LOGIN_ADMIN_TABS,
+        [SwitchableTabsConfig.HOME_DISCOVER_TABS_CONFIG]: LOGIN_ADMIN_TABS
+      }
+    };
+    const defaultSwitchableTabsConfig = SwitchableTabsConfig.RESOURCE_COURSE_TABS_CONFIG;
+    const selectedSwitchableTabsConfig = (await this.preferences.getString(PreferenceKey.SELECTED_SWITCHABLE_TABS_CONFIG).toPromise()) ||
+      defaultSwitchableTabsConfig;
+
+
+    if (!session) {
+      const profileType = this.appGlobalService.guestProfileType;
+      if (this.commonUtilService.isAccessibleForNonStudentRole(profileType)) {
+        return config['GUEST_TEACHER'][selectedSwitchableTabsConfig];
+      } else {
+        return config['GUEST_STUDENT'][selectedSwitchableTabsConfig];
+      }
+    } else {
+      const selectedUserType = await this.preferences.getString(PreferenceKey.SELECTED_USER_TYPE).toPromise();
+      return selectedUserType === ProfileType.ADMIN ?
+        config['LOGIN_ADMIN'][selectedSwitchableTabsConfig] :
+        config['LOGIN_USER'][selectedSwitchableTabsConfig];
     }
   }
 

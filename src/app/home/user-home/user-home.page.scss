@@ -1,0 +1,81 @@
+@import "src/assets/styles/_variables.scss";
+.filter-style {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--app-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: inline-block;
+}
+
+.user-profile {
+  padding: 0.5rem 1.5rem 0;
+  font-size: 3.2vh;
+  color: var(--app-gray);
+  .welcome-text{
+    font-size: 18px;
+  }
+  .user-name-text{
+    font-size: 24px;
+    font-weight: bold;
+  }
+}
+
+.spinner-div {
+  padding: 40px;
+  background-color: map-get($colors, light_gray);
+  text-align: center;
+  border: none !important;
+}
+
+.preference-container {
+  background-color: var(--app-primary-header);
+  margin: 0 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 12px;
+  color: var(--app-gray);
+  box-shadow: 0 0 50px 0 rgba(0,0,0,0.1);
+  border-radius: 1rem;
+  .user-preference {
+    display: flex;
+    align-items: center;
+    .preference-data{
+      width: 70%;
+    }
+    .change-btn{
+      width: 30%;
+      text-align: center;
+      button{
+        color: var(--app-primary);
+      }
+    }
+  }
+}
+
+.sb-card-scroll-container {
+  overflow-x: auto;
+  padding: 0 0 8px 0;
+}
+.sb-card-recently-container {
+  .recently-viewed-card-size{
+    margin: 0 8px; 
+    min-width:288px;
+    max-width:288px;
+    &:only-child {
+      min-width: 100%;
+      max-width: calc(100vw - 32px);
+    }
+  }
+}
+
+.sb-btn-primary-outline{
+  border-color: var(--app-white);  
+}
+
+.heading-ruler{
+  width: 100%;
+  margin-left: 1rem;
+  background-color: var(--app-primary-header);
+}

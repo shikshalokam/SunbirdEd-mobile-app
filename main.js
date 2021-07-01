@@ -25,19 +25,18 @@ var formRequestArray = [{
     },
     {
         'type': 'config',
-        'subType': 'content',
+        'subType': 'content_v2',
         'action': 'filter'
     },
     {
         'type': 'config',
-        'subType': 'dialcode',
+        'subType': 'supportedUrlRegex',
         'action': 'get'
     },
     {
         'type': 'user',
         'subType': 'externalIdVerification',
-        'action': 'onboarding',
-        'rootOrgId': '*'
+        'action': 'onboarding'
     },
     {
         'type':'contentfeedback',
@@ -48,6 +47,98 @@ var formRequestArray = [{
         'type': 'config',
         'subType': 'webview_version',
         'action': 'get'
+    },
+    {
+        'type': 'user',
+        'subType': 'manageduser',
+        'action': 'create',
+        'component': 'app'
+    },
+    {
+        'type': 'group',
+        'subType': 'activities_v2',
+        'action': 'list'
+    },
+    {
+        'type': 'dynamicform',
+        'subType': 'support_v2',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'form',
+        'subType': 'boardContactInfo',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'notification',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'boardAlias',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'dynamicform',
+        'subType': 'consentdeclaration_v2',
+        'action': 'submit',
+        'component': 'app'
+    },
+    {
+        'type': 'dynamicform',
+        'subType': 'contentrequest',
+        'action': 'submit',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'library_v4',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'course_v3',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'pdfPlayer',
+        'action': 'get'
+    },
+    {
+        'type': 'config',
+        'subType': 'userType_v2',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'profileConfig',
+        'subType': 'default',
+        'action': 'get'
+    },
+    {
+        'type': 'config',
+        'subType': 'adminHome',
+        'action': 'get',
+        'component': 'app'
+    },
+    {
+        'type': 'config',
+        'subType': 'deeplink',
+        'action': 'get'
+    },
+    {
+        "type": "config",
+        "subType": "search",
+        "action": "filter_v3",
+        "component": "app"
     }
 ];
 
@@ -163,7 +254,9 @@ async function saveSystemList(apiKey, apiChannel, baseUrl, apiSystemSettingList,
                         }], rootDir, apiFramework, true)
                         .then(() => {
                             return saveSystemSettingResponse(apiKey, baseUrl, apiSystemSettingId, rootDir, systemSettingsId)
-                        });;
+                        });
+                } else if (fieldName === 'tenantCoursePage') {
+                    await saveSystemSettingResponse(apiKey, baseUrl, apiSystemSettingId, rootDir, systemSettingsId);
                 }
             }
         })
@@ -219,9 +312,12 @@ async function saveFrameworkResponse(apiKey, baseUrl, response, rootDir, apiFram
 async function saveFormResponse(apiKey, baseUrl, apiForm, rootDir) {
     for (var i = 0; i < formRequestArray.length; i++) {
         const formRequest = formRequestArray[i];
-        let fileName = formRequest.type + '_' + formRequest.subType + '_' + formRequest.action;;
+        let fileName = formRequest.type + '_' + formRequest.subType + '_' + formRequest.action;
         if (formRequest.rootOrgId) {
             fileName += ('_' + formRequest.rootOrgId);
+        }
+        if (formRequest.component) {
+            fileName += ('_' + formRequest.component);
         }
         await makeAPICallnSaveResponse({
             apiKey: apiKey,

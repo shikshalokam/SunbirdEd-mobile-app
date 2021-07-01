@@ -3,7 +3,7 @@ import { AppHeaderService } from '@app/services/app-header.service';
 import { CommonUtilService, } from '@app/services/common-util.service';
 import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
 import { Subscription, Observable } from 'rxjs';
-import { PopoverController, ToastController } from '@ionic/angular';
+import { PopoverController } from '@ionic/angular';
 import {
   ContentService,
   DeviceInfo,
@@ -22,10 +22,7 @@ import { AppVersion } from '@ionic-native/app-version/ngx';
 import { AndroidPermissionsService } from 'services/android-permissions/android-permissions.service';
 import { AndroidPermission, AndroidPermissionsStatus } from 'services/android-permissions/android-permission';
 import { Location } from '@angular/common';
-import { Router } from '@angular/router';
-import { RouterLinks } from '../app.constant';
 import { featureIdMap } from '../feature-id-map';
-import { async } from 'q';
 import { mergeMap, map, filter , takeWhile, skip, take, startWith, tap} from 'rxjs/operators';
 
 @Component({
@@ -92,9 +89,7 @@ export class StorageSettingsPage implements OnInit {
     private telemetryGeneratorService: TelemetryGeneratorService,
     private appVersion: AppVersion,
     private permissionsService: AndroidPermissionsService,
-    private toastController: ToastController,
     private location: Location,
-    private router: Router,
     @Inject('EVENTS_BUS_SERVICE') private eventsBusService: EventsBusService,
     @Inject('STORAGE_SERVICE') private storageService: StorageService,
     @Inject('DEVICE_INFO') private deviceInfo: DeviceInfo,
@@ -114,6 +109,10 @@ export class StorageSettingsPage implements OnInit {
   }
 
   ngOnInit() {
+    this.telemetryGeneratorService.generateImpressionTelemetry(
+      ImpressionType.VIEW, '',
+      PageId.STORAGE_SETTINGS,
+      Environment.DOWNLOADS);
     this.fetchStorageVolumes();
     this.fetchStorageDestination();
   }
@@ -127,13 +126,14 @@ export class StorageSettingsPage implements OnInit {
       return;
     }
 
-    const permissionStatus = await this.getStoragePermissionStatus();
+    const permissionStatus = await this.commonUtilService.getGivenPermissionStatus(AndroidPermission.WRITE_EXTERNAL_STORAGE);
 
     if (permissionStatus.hasPermission) {
       this.showShouldTransferContentsPopup();
     } else if (permissionStatus.isPermissionAlwaysDenied) {
       this.revertSelectedStorageDestination();
-      this.showSettingsPageToast();
+      await this.commonUtilService.showSettingsPageToast
+      ('FILE_MANAGER_PERMISSION_DESCRIPTION', this.appName, PageId.TRANSFERING_CONTENT_POPUP, false);
     } else {
       this.showStoragePermissionPopup();
     }
@@ -152,6 +152,8 @@ export class StorageSettingsPage implements OnInit {
   private handleHeaderEvents(event: { name: string }) {
     switch (event.name) {
       case 'back':
+        this.telemetryGeneratorService.generateBackClickedTelemetry(PageId.STORAGE_SETTINGS, Environment.HOME,
+          true);
         this.location.back();
         break;
     }
@@ -180,83 +182,47 @@ export class StorageSettingsPage implements OnInit {
       .info.contentStoragePath;
   }
 
-  private async getStoragePermissionStatus(): Promise<AndroidPermissionsStatus> {
-    return (
-      await this.permissionsService.checkPermissions([AndroidPermission.WRITE_EXTERNAL_STORAGE]).toPromise()
-    )[AndroidPermission.WRITE_EXTERNAL_STORAGE];
-  }
-
   private async showStoragePermissionPopup() {
-    const confirm = await this.popoverCtrl.create({
-      component: SbPopoverComponent,
-      componentProps: {
-        isNotShowCloseIcon: false,
-        sbPopoverHeading: this.commonUtilService.translateMessage('PERMISSION_REQUIRED'),
-        sbPopoverMainTitle: this.commonUtilService.translateMessage('FILE_MANAGER'),
-        actionsButtons: [
-          {
-            btntext: this.commonUtilService.translateMessage('NOT_NOW'),
-            btnClass: 'popover-button-cancel',
-          },
-          {
-            btntext: this.commonUtilService.translateMessage('ALLOW'),
-            btnClass: 'popover-button-allow',
-          }
-        ],
-        handler: (selectedButton: string) => {
+    const confirm = await this.commonUtilService.buildPermissionPopover(
+        async (selectedButton: string) => {
           if (selectedButton === this.commonUtilService.translateMessage('NOT_NOW')) {
+            this.telemetryGeneratorService.generateInteractTelemetry(
+                InteractType.TOUCH,
+                InteractSubtype.NOT_NOW_CLICKED,
+                Environment.HOME,
+                PageId.PERMISSION_POPUP);
             this.revertSelectedStorageDestination();
-            this.showSettingsPageToast();
+            await this.commonUtilService.showSettingsPageToast
+            ('FILE_MANAGER_PERMISSION_DESCRIPTION', this.appName, PageId.TRANSFERING_CONTENT_POPUP, true);
           } else if (selectedButton === this.commonUtilService.translateMessage('ALLOW')) {
+            this.telemetryGeneratorService.generateInteractTelemetry(
+                InteractType.TOUCH,
+                InteractSubtype.ALLOW_CLICKED,
+                Environment.HOME,
+                PageId.PERMISSION_POPUP);
             this.permissionsService.requestPermission(AndroidPermission.WRITE_EXTERNAL_STORAGE)
-              .subscribe((status: AndroidPermissionsStatus) => {
-                if (status.hasPermission) {
-                  this.showShouldTransferContentsPopup();
-                } else if (status.isPermissionAlwaysDenied) {
-                  this.revertSelectedStorageDestination();
-                  this.showSettingsPageToast();
-                } else {
-                  this.revertSelectedStorageDestination();
-                }
-              });
+                .subscribe((status: AndroidPermissionsStatus) => {
+                  if (status.hasPermission) {
+                    this.showShouldTransferContentsPopup();
+                  } else if (status.isPermissionAlwaysDenied) {
+                    this.revertSelectedStorageDestination();
+                    this.commonUtilService.showSettingsPageToast
+                    ('FILE_MANAGER_PERMISSION_DESCRIPTION', this.appName, PageId.TRANSFERING_CONTENT_POPUP, true);
+                  } else {
+                    this.revertSelectedStorageDestination();
+                  }
+                });
           }
-        },
-        img: {
-          path: './assets/imgs/ic_folder_open.png',
-        },
-        metaInfo: this.commonUtilService.translateMessage('FILE_MANAGER_PERMISSION_DESCRIPTION', this.appName),
-      },
-      cssClass: 'sb-popover sb-popover-permissions primary dw-active-downloads-popover',
-    });
+        }, this.appName, this.commonUtilService.translateMessage('FILE_MANAGER'),
+        'FILE_MANAGER_PERMISSION_DESCRIPTION', PageId.TRANSFERING_CONTENT_POPUP, true
+    );
+    await confirm.present();
 
-    confirm.present();
-
-    confirm.onWillDismiss().then(({data}) => {
+    confirm.onWillDismiss().then(({ data }) => {
       if (data.buttonClicked === null) {
         this.revertSelectedStorageDestination();
       }
     });
-
-  }
-
-  private async showSettingsPageToast() {
-    const toast = await this.toastController.create({
-      message: this.commonUtilService.translateMessage('FILE_MANAGER_PERMISSION_DESCRIPTION', this.appName),
-      cssClass: 'permissionSettingToast',
-      showCloseButton: true,
-      closeButtonText: this.commonUtilService.translateMessage('SETTINGS'),
-      position: 'bottom',
-      duration: 3000
-    });
-
-    toast.present();
-
-    toast.onWillDismiss().then((res) => {
-      if (res.role === 'cancel') {
-        this.router.navigate([`/${RouterLinks.SETTINGS}/${RouterLinks.PERMISSION}`], { state: { changePermissionAccess: true } });
-      }
-    });
-
   }
 
   private async showShouldTransferContentsPopup(): Promise<void> {
@@ -287,7 +253,7 @@ export class StorageSettingsPage implements OnInit {
       cssClass: 'sb-popover dw-active-downloads-popover',
     });
 
-    this.shouldTransferContentsPopup.present();
+    await this.shouldTransferContentsPopup.present();
     this.telemetryGeneratorService.generateImpressionTelemetry(
       ImpressionType.VIEW,
       '',
@@ -482,7 +448,7 @@ export class StorageSettingsPage implements OnInit {
       ),
       take(1)
     )
-     .subscribe(async (e) => {
+      .subscribe(async (e) => {
         if (e.type === StorageEventType.TRANSFER_REVERT_COMPLETED) {
           this.storageDestination = this.storageDestination === StorageDestination.INTERNAL_STORAGE ?
             StorageDestination.EXTERNAL_STORAGE :
@@ -507,7 +473,7 @@ export class StorageSettingsPage implements OnInit {
       cssClass: 'sb-popover dw-active-downloads-popover',
     });
 
-    this.cancellingTransferPopup.present();
+    await this.cancellingTransferPopup.present();
 
     this.cancellingTransferPopup.onDidDismiss().then(() => {
       this.cancellingTransferPopup = undefined;
@@ -543,7 +509,7 @@ export class StorageSettingsPage implements OnInit {
       cssClass: 'sb-popover warning dw-active-downloads-popover',
     });
 
-    this.duplicateContentPopup.present();
+    await this.duplicateContentPopup.present();
 
     this.telemetryGeneratorService.generateImpressionTelemetry(
       ImpressionType.VIEW,
@@ -608,7 +574,7 @@ export class StorageSettingsPage implements OnInit {
       cssClass: 'sb-popover dw-active-downloads-popover',
     });
 
-    this.successTransferPopup.present();
+    await this.successTransferPopup.present();
 
     this.telemetryGeneratorService.generateImpressionTelemetry(
       ImpressionType.VIEW,
@@ -617,7 +583,7 @@ export class StorageSettingsPage implements OnInit {
       Environment.DOWNLOADS
     );
 
-    this.successTransferPopup.onDidDismiss().then(({data}) => {
+    this.successTransferPopup.onDidDismiss().then(({ data }) => {
       this.successTransferPopup = undefined;
 
       if (data && data.canDelete) {

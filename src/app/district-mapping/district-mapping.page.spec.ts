@@ -1,21 +1,26 @@
 import { DistrictMappingPage } from '../district-mapping/district-mapping.page';
 import {
     AppGlobalService, AppHeaderService, CommonUtilService,
-    FormAndFrameworkUtilService, TelemetryGeneratorService
+    FormAndFrameworkUtilService, TelemetryGeneratorService, AuditType, InteractType, CorReleationDataType, InteractSubtype
 } from '../../services';
-import { InteractSubtype, PageId, Environment } from '@app/services/telemetry-constants';
-import { DeviceRegisterService } from '../../../../sunbird-mobile-sdk/src/device-register';
+import { featureIdMap } from '@app/feature-id-map';
+import { PageId, Environment, ImpressionType } from '@app/services/telemetry-constants';
 import { DeviceInfo } from '../../../../sunbird-mobile-sdk/src/util/device';
 import { Router } from '@angular/router';
 import { Location } from '@angular/common';
-import { Events, Platform } from '@ionic/angular';
-import { ChangeDetectorRef, NgZone } from '@angular/core';
-import { ExternalIdVerificationService } from '../../services/externalid-verification.service';
-import { SharedPreferences } from '../../../../sunbird-mobile-sdk/src/util/shared-preferences';
-import { EMPTY, of, throwError } from 'rxjs';
-import { LocationSearchResult } from '../../../../sunbird-mobile-sdk/src/profile/def/location-search-result';
-import { ProfileService, Profile, ProfileType, ProfileSource, DeviceRegisterResponse } from 'sunbird-sdk';
+import { Platform } from '@ionic/angular';
+import { Events } from '@app/util/events';
+import { of, throwError } from 'rxjs';
+import {
+    ProfileService, Profile, SharedPreferences, ProfileType, ProfileSource, DeviceRegisterResponse,
+    DeviceRegisterService
+} from 'sunbird-sdk';
 import { PreferenceKey } from '@app/app/app.constant';
+import { FormLocationFactory } from '../../services/form-location-factory/form-location-factory';
+import { LocationHandler } from '../../services/location-handler';
+import { ProfileHandler } from '../../services/profile-handler';
+import { AuditState, CorrelationData } from '@project-sunbird/sunbird-sdk';
+import { TncUpdateHandlerService } from '../../services/handlers/tnc-update-handler.service';
 
 describe('DistrictMappingPage', () => {
     let districtMappingPage: DistrictMappingPage;
@@ -44,10 +49,17 @@ describe('DistrictMappingPage', () => {
     const mockDeviceRegisterService: Partial<DeviceRegisterService> = {
         registerDevice: jest.fn(() => of({} as DeviceRegisterResponse))
     };
-    const mockDeviceInfo: Partial<DeviceInfo> = {};
+    const mockDeviceInfo: Partial<DeviceInfo> = {
+        isKeyboardShown: jest.fn(() => of(true))
+    };
     const mockFormAndFrameworkUtilService: Partial<FormAndFrameworkUtilService> = {};
     const mockRouter: Partial<Router> = {
-        navigate: jest.fn()
+        navigate: jest.fn(),
+        getCurrentNavigation: jest.fn(() => ({
+            extras: {
+                state: true
+            }
+        })) as any
     };
     const mockLocation: Partial<Location> = {
         back: jest.fn()
@@ -66,26 +78,20 @@ describe('DistrictMappingPage', () => {
         generateInteractTelemetry: jest.fn(),
         generateBackClickedTelemetry: jest.fn()
     };
-    const mockChangeDetectionRef: Partial<ChangeDetectorRef> = {};
-    const mockNgZone: Partial<NgZone> = {
-        run: jest.fn((fn) => fn())
-
+    const mockFormLocationFactory: Partial<FormLocationFactory> = {};
+    const mockLocationHandler: Partial<LocationHandler> = {
     };
-    const mockExternalIdVerificationService: Partial<ExternalIdVerificationService> = {
-        showExternalIdVerificationPopup: jest.fn()
+    const mockProfileHandler: Partial<ProfileHandler> = {
     };
+    mockRouter.getCurrentNavigation = jest.fn(() => {
+        return {
+            extras: { state: {} }
+        };
+    }) as any;
+    const mockTncUpdateHandlerService: Partial<TncUpdateHandlerService> = {};
 
     beforeAll(() => {
-        mockRouter.getCurrentNavigation = jest.fn(() => {
-            return {
-                extras: {}
-            };
-        });
-
-        mockDeviceInfo.isKeyboardShown = jest.fn(() => {
-            return EMPTY;
-        });
-
+        //  window.history.state.source({query: 'google'}, 'MOCK');
         districtMappingPage = new DistrictMappingPage(
             mockProfileService as ProfileService,
             mockPreferences as SharedPreferences,
@@ -100,9 +106,10 @@ describe('DistrictMappingPage', () => {
             mockEvents as Events,
             mockPlatform as Platform,
             mockTelemetryGeneratorService as TelemetryGeneratorService,
-            mockChangeDetectionRef as ChangeDetectorRef,
-            mockNgZone as NgZone,
-            mockExternalIdVerificationService as ExternalIdVerificationService
+            mockFormLocationFactory as FormLocationFactory,
+            mockLocationHandler as LocationHandler,
+            mockProfileHandler as ProfileHandler,
+            mockTncUpdateHandlerService as TncUpdateHandlerService
         );
     });
 
@@ -114,579 +121,783 @@ describe('DistrictMappingPage', () => {
         expect(districtMappingPage).toBeTruthy();
     });
 
-    it('should open select overlay when showStates is set', (done) => {
-        // arrange
-        districtMappingPage.stateSelect = { open: jest.fn(() => { }) };
+    describe('goBack', () => {
+        beforeEach(() => {
+            window.history.pushState({ sourc: 'sample-source' }, '', '');
+        });
 
-        // act
-        districtMappingPage.showStates = true;
-
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.stateSelect.open).toHaveBeenCalledTimes(1);
-            done();
-        }, 510);
+        it('should generate back clicked telemetry', () => {
+            // arrange
+            mockTelemetryGeneratorService.generateBackClickedNewTelemetry = jest.fn();
+            mockTelemetryGeneratorService.generateBackClickedTelemetry = jest.fn();
+            // act
+            districtMappingPage.goBack(false);
+            // assert
+            expect(mockTelemetryGeneratorService.generateBackClickedNewTelemetry).toHaveBeenCalledWith(
+                true,
+                Environment.ONBOARDING,
+                PageId.LOCATION
+            );
+            expect(mockTelemetryGeneratorService.generateBackClickedTelemetry).toHaveBeenCalledWith(
+                PageId.DISTRICT_MAPPING,
+                Environment.ONBOARDING,
+                false);
+        });
     });
 
-    it('should open select overlay when showDistrict is set', (done) => {
-        // arrange
-        districtMappingPage.districtSelect = { open: jest.fn(() => { }) };
-
-        // act
-        districtMappingPage.showDistrict = true;
-
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.districtSelect.open).toHaveBeenCalledTimes(1);
-            done();
-        }, 510);
+    describe('handleDeviceBackButton', () => {
+        beforeEach(() => {
+            window.history.pushState({ isShowBackButton: true }, '', '');
+        });
+        it('should handle devices back button', () => {
+            // arrange
+            const subscribeWithPriorityData = jest.fn((_, fn) => fn());
+            mockPlatform.backButton = {
+                subscribeWithPriority: subscribeWithPriorityData
+            } as any;
+            jest.spyOn(districtMappingPage, 'goBack').mockImplementation();
+            // act
+            districtMappingPage.handleDeviceBackButton();
+            // arrange
+            expect(subscribeWithPriorityData).toHaveBeenCalledWith(10, expect.any(Function));
+        });
     });
 
-    it('should populate the state name when getStates() is invoked ', () => {
-        // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        const dismissFn = jest.fn(() => Promise.resolve());
-        mockCommonUtilService.getLoader = jest.fn(() => ({
-            present: presentFn,
-            dismiss: dismissFn,
-        }));
-        const locationSearchResult: LocationSearchResult[] = [{ code: '2', name: 'Odisha', id: '12345', type: 'state' }];
-        jest.spyOn(mockProfileService, 'searchLocation').mockReturnValue(of(locationSearchResult));
-        districtMappingPage.availableLocationState = 'Odisha';
-        districtMappingPage.availableLocationDistrict = 'Odisha';
-        districtMappingPage.isAutoPopulated = true;
-        // act
-        districtMappingPage.getStates();
-
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.stateList).toBeDefined();
-            expect(districtMappingPage.stateName).toBeDefined();
-        }, 0);
-
-    });
-
-    it('should generate TELEMETRY when device back clicked', () => {
-        // arrange
-        const subscribeWithPriorityData = jest.fn((_, fn) => fn());
-        mockPlatform.backButton = {
-            subscribeWithPriority: subscribeWithPriorityData,
-
-        } as any;
-        window.history.replaceState({ source: 'guest-profile', isShowBackButton: true }, 'MOCK');
-        // act
-        districtMappingPage.handleDeviceBackButton();
-        // assert
-        expect(mockTelemetryGeneratorService.generateBackClickedTelemetry).toHaveBeenCalledWith(
-            PageId.DISTRICT_MAPPING, Environment.USER, false);
-    });
-
-    it('should unsubscribe backButtonFunc in ionViewWillLeave', () => {
-        // arrange
-        districtMappingPage.backButtonFunc = {
-            unsubscribe: jest.fn(),
-
-        } as any;
-        // act
+    it('should unsubscribe backButton', () => {
         districtMappingPage.ionViewWillLeave();
-        // assert
-        expect(districtMappingPage.backButtonFunc.unsubscribe).toHaveBeenCalled();
     });
 
-    it('shouldn\'t populate district when state value is not available  ', (done) => {
+    it('should generate location capture telemetry', () => {
         // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        const dismissFn = jest.fn(() => Promise.resolve());
-        mockCommonUtilService.getLoader = jest.fn(() => ({
-            present: presentFn,
-            dismiss: dismissFn,
-        }));
-        const locationSearchResult: LocationSearchResult[] = [];
-        jest.spyOn(mockProfileService, 'searchLocation').mockReturnValue(of(locationSearchResult));
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        const isEdited = true;
         // act
-        districtMappingPage.getStates();
-
+        districtMappingPage.generateLocationCaptured(true);
         // assert
-        setTimeout(() => {
-            expect(districtMappingPage.districtList).toEqual([]);
-            expect(districtMappingPage.showDistrict).toBeTruthy();
-            done();
-        }, 1);
-
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.TOUCH,
+            InteractSubtype.LOCATION_CAPTURED,
+            Environment.ONBOARDING,
+            PageId.DISTRICT_MAPPING,
+            undefined,
+            {
+              isEdited
+            }, undefined,
+            [{id: 'user:location_capture', type: 'Feature'}, {id: 'SB-14682', type: 'Task'}]
+        );
     });
 
-    it('shouldn\'t populate district when state value is not available  ', (done) => {
-        // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        const dismissFn = jest.fn(() => Promise.resolve());
-        mockCommonUtilService.getLoader = jest.fn(() => ({
-            present: presentFn,
-            dismiss: dismissFn,
-        }));
-        const locationSearchResult: LocationSearchResult[] = [{ code: '2', name: 'Karnataka', id: '12345', type: 'state' }];
-        jest.spyOn(mockProfileService, 'searchLocation').mockReturnValue(of(locationSearchResult));
-        districtMappingPage.availableLocationDistrict = 'Cuttack';
-        // act
-        districtMappingPage.getDistrict('');
-
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.districtName).toEqual('');
-            done();
-        }, 1);
-
+    describe('isStateorDistrictChanged', () => {
+        it('should return changeStatue for state change', () => {
+            // arrange
+            const locationCodes = [{
+                type: 'state',
+                code: 'new-code'
+            }];
+            // act
+            const data = districtMappingPage.isStateorDistrictChanged(locationCodes);
+            // assert
+            expect(data).toBeUndefined();
+        });
     });
 
-    it('should show districtList if availableLocationDistrict is not available ', (done) => {
-        // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        const dismissFn = jest.fn(() => Promise.resolve());
-        mockCommonUtilService.getLoader = jest.fn(() => ({
-            present: presentFn,
-            dismiss: dismissFn,
-        }));
-        const locationSearchResult: LocationSearchResult[] = [{ code: '2', name: 'Odisha', id: '12345', type: 'state' }];
-        jest.spyOn(mockProfileService, 'searchLocation').mockReturnValue(of(locationSearchResult));
-        districtMappingPage.availableLocationDistrict = undefined;
-        // act
-        districtMappingPage.getDistrict('');
+    describe('submit', () => {
+        beforeEach(() => {
+            window.history.pushState({ isShowBackButton: true }, '', '');
+        });
 
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.showDistrict).toBeTruthy();
-            done();
-        }, 1);
+        it('should generate generateSubmitInteractEvent', () => {
+            // arrange
+            mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+            const correlationList: Array<CorrelationData> = [];
+            correlationList.push({ id: PageId.POPUP_CATEGORY, type: CorReleationDataType.CHILD_UI });
+            // act
+            districtMappingPage.generateSubmitInteractEvent(correlationList);
+            // assert
+            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+                InteractType.SELECT_SUBMIT, '',
+                Environment.ONBOARDING,
+                PageId.LOCATION,
+                undefined,
+                undefined,
+                undefined,
+                correlationList
+            );
+        });
 
-    });
-
-    it('should show  NODATA toast if district list is not available', (done) => {
-        // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        const dismissFn = jest.fn(() => Promise.resolve());
-        mockCommonUtilService.getLoader = jest.fn(() => ({
-            present: presentFn,
-            dismiss: dismissFn,
-        }));
-        const locationSearchResult: LocationSearchResult[] = undefined;
-        jest.spyOn(mockProfileService, 'searchLocation').mockReturnValue(of(locationSearchResult));
-        districtMappingPage.availableLocationDistrict = undefined;
-        // act
-        districtMappingPage.getDistrict('');
-
-        // assert
-        setTimeout(() => {
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('NO_DATA_FOUND');
-            expect(districtMappingPage.districtList).toEqual([]);
-            expect(districtMappingPage.showDistrict).toBeFalsy();
-            done();
-        }, 1);
-
-    });
-
-    it('should show NO NETWORK Toast if network is not available on click of submit', () => {
-        // arrange
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: false };
-
-        // act
-        districtMappingPage.submit();
-        // assert
-        expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('INTERNET_CONNECTIVITY_NEEDED');
-    });
-
-    it('should invoke device register API and save it in the preference', (done) => {
-        // arrange
-        districtMappingPage.stateList = [{ type: 'state', name: 'Odisha', id: 'od_123' }];
-        districtMappingPage.districtList = [{ type: 'district', name: 'Cuttack', id: 'ct_123' }];
-        districtMappingPage.stateName = 'Odisha';
-        districtMappingPage.districtName = 'Cuttack';
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        const req = {
-            userDeclaredLocation: {
-                state: 'Odisha',
-                stateId: 'od_123',
-                district: 'Cuttack',
-                districtId: 'ct_123',
-                declaredOffline: false
-            }
-        };
-
-        // act
-        districtMappingPage.saveDeviceLocation();
-        // assert
-        setTimeout( () => {
-            expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalledWith(req);
-            expect(mockPreferences.putString).toHaveBeenCalledWith(PreferenceKey.DEVICE_LOCATION, JSON.stringify(req.userDeclaredLocation));
-            expect(mockCommonUtilService.getLoader().dismiss).toHaveBeenCalled();
-            done();
-        }, 1);
-    });
-
-    it('should invoke updateServerProfile when submit clicked', (done) => {
-        // arrange
-        window.history.replaceState({ profile }, 'MOCK');
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        districtMappingPage.name = 'sample_name';
-        mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
-        jest.spyOn(districtMappingPage, 'saveDeviceLocation').mockImplementation();
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(mockProfileService.updateServerProfile).toHaveBeenCalledTimes(1);
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_SUCCESS');
-            expect(mockEvents.publish).toHaveBeenCalledWith('loggedInProfile:update',
-                { firstName: 'sample_name', lastName: '', locationCodes: ['2', '2'], userId: '12345' });
-            expect(mockLocation.back).toHaveBeenCalled();
-            done();
-        }, 1);
-    });
-
-    it('should go 2 pages back  when submit clicked and profile is not available', (done) => {
-        // arrange
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        districtMappingPage.name = 'sample_name';
-        mockAppGlobalService.isJoinTraningOnboardingFlow = true;
-        jest.spyOn(window.history, 'go');
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(mockProfileService.updateServerProfile).toHaveBeenCalledTimes(1);
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_SUCCESS');
-            expect(window.history.go).toHaveBeenCalledWith(-2);
-            done();
-        }, 1);
-    });
-
-    it('should navigate to TAB page  when submit clicked and profile is not available', (done) => {
-        // arrange
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        districtMappingPage.name = 'sample_name';
-        mockAppGlobalService.isJoinTraningOnboardingFlow = false;
-        jest.spyOn(window.history, 'go');
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(mockProfileService.updateServerProfile).toHaveBeenCalledTimes(1);
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_SUCCESS');
-            expect(mockRouter.navigate).toHaveBeenCalledWith(['/tabs']);
-            done();
-        }, 1);
-    });
-
-    it('should naviigate to TABS page if API fails and profile is not available ', (done) => {
-        // arrange
-        mockProfileService.updateServerProfile = jest.fn(() => throwError(''));
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        districtMappingPage.name = 'sample_name';
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_FAILED');
-            expect(mockRouter.navigate).toHaveBeenCalledWith(['/tabs']);
-            expect(mockExternalIdVerificationService.showExternalIdVerificationPopup).toHaveBeenCalled();
-            done();
-        }, 1);
-    });
-
-    it('should go back if API fails and profile  available ', (done) => {
-        // arrange
-        window.history.replaceState({ profile }, 'MOCK');
-        mockProfileService.updateServerProfile = jest.fn(() => throwError(''));
-        mockCommonUtilService.networkInfo = { isNetworkAvailable: true };
-        districtMappingPage.name = 'sample_name';
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_FAILED');
-            expect(mockLocation.back).toHaveBeenCalled();
-            done();
-        }, 1);
-    });
-
-    it('should save location if user is trying to edit the location', (done) => {
-        // arrange
-        window.history.replaceState({ source: 'guest-profile' }, 'MOCK');
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
-        jest.spyOn(districtMappingPage, 'saveDeviceLocation').mockImplementation();
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.saveDeviceLocation).toHaveBeenCalled();
-            expect(mockLocation.back).toHaveBeenCalled();
-            expect(mockEvents.publish).toHaveBeenCalledWith('refresh:profile');
-            done();
-        }, 1);
-        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
-
-    });
-
-    it('should save location in case of normal usecase', (done) => {
-        // arrange
-        window.history.replaceState({ source: 'profile-setting' }, 'MOCK');
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
-        mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
-        jest.spyOn(districtMappingPage, 'saveDeviceLocation').mockImplementation();
-        mockAppGlobalService.setOnBoardingCompleted = jest.fn();
-        // act
-        districtMappingPage.submit();
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.saveDeviceLocation).toHaveBeenCalled();
-            expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
-            expect(mockAppGlobalService.setOnBoardingCompleted).toHaveBeenCalled();
-            expect(mockRouter.navigate).toHaveBeenCalledWith(['/tabs'], {
-                state: {
-                    loginMode: 'guest'
+        it('should not submit form details for offline', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn,
+            }));
+            districtMappingPage.formGroup = {
+                value: {
+                    children: {
+                        persona: {
+                            type: { type: 'sample-type' },
+                            code: 'sample-code'
+                        }
+                    },
+                    name: 'sample name'
                 }
+            } as any;
+            mockCommonUtilService.networkInfo = {
+                isNetworkAvailable: false
+            };
+            mockDeviceRegisterService.registerDevice = jest.fn(() => of({}));
+            mockPreferences.putString = jest.fn(() => of(undefined));
+            mockCommonUtilService.handleToTopicBasedNotification = jest.fn();
+            jest.spyOn(districtMappingPage, 'generateSubmitInteractEvent').mockImplementation();
+            mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+            jest.spyOn(districtMappingPage, 'isStateorDistrictChanged').mockImplementation(() => {
+                return {};
             });
-            done();
-        }, 1);
+            mockCommonUtilService.showToast = jest.fn();
+            // act
+            districtMappingPage.submit();
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                expect(presentFn).toHaveBeenCalledWith();
+                expect(mockCommonUtilService.networkInfo.isNetworkAvailable).toBeFalsy();
+                expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalled();
+                expect(mockCommonUtilService.handleToTopicBasedNotification).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
+                expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('INTERNET_CONNECTIVITY_NEEDED');
+                expect(dismissFn).toHaveBeenCalledWith();
+                done();
+            }, 0);
+        });
+
+        it('should submit form details', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn,
+            }));
+            mockTncUpdateHandlerService.isSSOUser = jest.fn(() => Promise.resolve(true));
+            districtMappingPage.formGroup = {
+                value: {
+                    children: {
+                        persona: {
+                            type: { type: 'sample-type' },
+                            code: 'sample-code'
+                        }
+                    },
+                    name: 'sample name'
+                }
+            } as any;
+            mockCommonUtilService.networkInfo = {
+                isNetworkAvailable: true
+            };
+            mockDeviceRegisterService.registerDevice = jest.fn(() => of({}));
+            mockPreferences.putString = jest.fn(() => of(undefined));
+            mockCommonUtilService.handleToTopicBasedNotification = jest.fn();
+            jest.spyOn(districtMappingPage, 'generateSubmitInteractEvent').mockImplementation();
+            mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+            jest.spyOn(districtMappingPage, 'isStateorDistrictChanged').mockImplementation(() => {
+                return {};
+            });
+            districtMappingPage.profile = {
+                uid: 'sample-uid'
+            };
+            mockProfileService.updateServerProfile = jest.fn(() => of({}));
+            mockAppGlobalService.getCurrentUser = jest.fn(() => ({ uid: 'sample-uid' }));
+            mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
+            jest.spyOn(districtMappingPage, 'generateLocationCaptured').mockImplementation();
+            mockCommonUtilService.showToast = jest.fn();
+            // act
+            districtMappingPage.submit();
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                expect(presentFn).toHaveBeenCalledWith();
+                expect(mockCommonUtilService.networkInfo.isNetworkAvailable).toBeTruthy();
+                expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalled();
+                expect(mockCommonUtilService.handleToTopicBasedNotification).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
+                expect(mockProfileService.updateServerProfile).toHaveBeenCalled();
+                expect(mockAppGlobalService.getCurrentUser).toHaveBeenCalled();
+                expect(mockCommonUtilService.isDeviceLocationAvailable).toHaveBeenCalled();
+                expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_SUCCESS');
+                expect(mockTncUpdateHandlerService.isSSOUser).toHaveBeenCalled();
+                done();
+            }, 0);
+        });
+
+        it('should submit form details and goback previous page', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn,
+            }));
+            districtMappingPage.formGroup = {
+                value: {
+                    children: {
+                        persona: {
+                            type: { type: 'sample-type' },
+                            code: 'sample-code'
+                        }
+                    },
+                    name: 'sample name'
+                }
+            } as any;
+            mockCommonUtilService.networkInfo = {
+                isNetworkAvailable: true
+            };
+            mockDeviceRegisterService.registerDevice = jest.fn(() => of({}));
+            mockPreferences.putString = jest.fn(() => of(undefined));
+            mockCommonUtilService.handleToTopicBasedNotification = jest.fn();
+            jest.spyOn(districtMappingPage, 'generateSubmitInteractEvent').mockImplementation();
+            mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+            jest.spyOn(districtMappingPage, 'isStateorDistrictChanged').mockImplementation(() => {
+                return {};
+            });
+            districtMappingPage.profile = {
+                uid: 'sample-uid'
+            };
+            mockProfileService.updateServerProfile = jest.fn(() => of({}));
+            mockAppGlobalService.getCurrentUser = jest.fn(() => ({ uid: 'sample-uid' }));
+            mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
+            jest.spyOn(districtMappingPage, 'generateLocationCaptured').mockImplementation();
+            mockCommonUtilService.showToast = jest.fn();
+            mockAppGlobalService.isJoinTraningOnboardingFlow = true;
+            // act
+            districtMappingPage.submit();
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                expect(presentFn).toHaveBeenCalledWith();
+                expect(mockCommonUtilService.networkInfo.isNetworkAvailable).toBeTruthy();
+                expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalled();
+                expect(mockCommonUtilService.handleToTopicBasedNotification).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
+                expect(mockProfileService.updateServerProfile).toHaveBeenCalled();
+                expect(mockAppGlobalService.getCurrentUser).toHaveBeenCalled();
+                expect(mockCommonUtilService.isDeviceLocationAvailable).toHaveBeenCalled();
+                expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_SUCCESS');
+                done();
+            }, 0);
+        });
+
+        it('should not submit form details for update profile catch part', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn,
+            }));
+            districtMappingPage.formGroup = {
+                value: {
+                    children: {
+                        persona: {
+                            type: { type: 'sample-type' },
+                            code: 'sample-code'
+                        }
+                    },
+                    name: 'sample name'
+                }
+            } as any;
+            mockCommonUtilService.networkInfo = {
+                isNetworkAvailable: true
+            };
+            mockDeviceRegisterService.registerDevice = jest.fn(() => of({}));
+            mockPreferences.putString = jest.fn(() => of(undefined));
+            mockCommonUtilService.handleToTopicBasedNotification = jest.fn();
+            jest.spyOn(districtMappingPage, 'generateSubmitInteractEvent').mockImplementation();
+            mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+            jest.spyOn(districtMappingPage, 'isStateorDistrictChanged').mockImplementation(() => {
+                return {};
+            });
+            districtMappingPage.profile = {
+                uid: 'sample-uid'
+            };
+            mockProfileService.updateServerProfile = jest.fn(() => throwError({}));
+            mockAppGlobalService.getCurrentUser = jest.fn(() => ({ uid: 'sample-uid' }));
+            mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
+            jest.spyOn(districtMappingPage, 'generateLocationCaptured').mockImplementation();
+            mockCommonUtilService.showToast = jest.fn();
+            mockAppGlobalService.isJoinTraningOnboardingFlow = true;
+            mockLocation.back = jest.fn();
+            // act
+            districtMappingPage.submit();
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                expect(presentFn).toHaveBeenCalledWith();
+                expect(mockCommonUtilService.networkInfo.isNetworkAvailable).toBeTruthy();
+                expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalled();
+                expect(mockCommonUtilService.handleToTopicBasedNotification).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalled();
+                expect(mockProfileService.updateServerProfile).toHaveBeenCalled();
+                expect(mockAppGlobalService.getCurrentUser).toHaveBeenCalled();
+                expect(mockCommonUtilService.showToast).toHaveBeenCalledWith('PROFILE_UPDATE_FAILED');
+                expect(mockLocation.back).toHaveBeenCalledWith();
+                done();
+            }, 0);
+        });
+
+        it('should submit form details for guest user', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn,
+            }));
+            districtMappingPage.formGroup = {
+                value: {
+                    children: {
+                        persona: {
+                            type: { type: 'sample-type' },
+                            code: 'sample-code'
+                        }
+                    },
+                    name: 'sample name'
+                }
+            } as any;
+            mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
+            mockDeviceRegisterService.registerDevice = jest.fn(() => of({}));
+            mockPreferences.putString = jest.fn(() => of(undefined));
+            mockCommonUtilService.handleToTopicBasedNotification = jest.fn();
+            mockAppGlobalService.setOnBoardingCompleted = jest.fn(() => Promise.resolve());
+            mockTelemetryGeneratorService.generateAuditTelemetry = jest.fn();
+            // act
+            districtMappingPage.submit();
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                expect(presentFn).toHaveBeenCalledWith();
+                expect(mockCommonUtilService.networkInfo.isNetworkAvailable).toBeTruthy();
+                expect(mockDeviceRegisterService.registerDevice).toHaveBeenCalled();
+                expect(mockCommonUtilService.handleToTopicBasedNotification).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generateAuditTelemetry).toHaveBeenCalledWith(
+                    Environment.ONBOARDING,
+                    AuditState.AUDIT_UPDATED,
+                    undefined,
+                    AuditType.SET_PROFILE,
+                    undefined,
+                    undefined,
+                    undefined,
+                    [{ id: '', type: 'sample-type' }]
+                );
+                expect(mockAppGlobalService.setOnBoardingCompleted).toHaveBeenCalled();
+                done();
+            }, 0);
+        });
     });
 
-    it('should populate availableLocationState and availableLocationDistrict', () => {
-        // arrange
-        profile['userLocations'] = [{ type: 'state', name: 'Odisha' }, { type: 'district', name: 'Cuttack' }];
-        window.history.replaceState({ profile }, 'MOCK');
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
-        // act
-        districtMappingPage.checkLocationAvailability();
-        // assert
-        expect(districtMappingPage.availableLocationState).toEqual('Odisha');
-        expect(districtMappingPage.availableLocationDistrict).toEqual('Cuttack');
-
+    describe('ionViewWillEnter', () => {
+        beforeEach(() => {
+            window.history.pushState({ isShowBackButton: true }, '', '');
+        });
+        it('should initialized form data', (done) => {
+            // arrange
+            mockProfileService.getActiveSessionProfile = jest.fn(() => of({
+                serveProfile: {
+                    firstName: 'sample-name',
+                    userType: ProfileType.TEACHER
+                },
+                profileType: ProfileType.TEACHER,
+                handle: 'sample-name'
+            }));
+            mockLocationHandler.getAvailableLocation = jest.fn(() => Promise.resolve([{
+                state: {code: 'sample-code', name: 'sample-name'},
+                district: {code: 'sample-code', name: 'sample-name'},
+            }])) as any;
+            mockFormAndFrameworkUtilService.getFormFields = jest.fn(() => Promise.resolve([{
+                code: 'name',
+                default: 'default',
+                templateOptions: {
+                    hidden: false
+                }
+            }, {
+                code: 'persona',
+                templateOptions: {
+                    dataSrc: {
+                        marker: 'SUPPORTED_PERSONA_LIST',
+                        params: {
+                            useCase: 'sample-useCase'
+                        }
+                    },
+                    options: {}
+                },
+                children: {
+                    administrator: [
+                        {
+                            code: 'state',
+                            type: 'select',
+                            templateOptions: {
+                                labelHtml: {
+                                    contents: '<span>$0&nbsp;<span class=\'required-asterisk\'>*</span></span>',
+                                    values: {
+                                        $0: 'State'
+                                    }
+                                },
+                                placeHolder: 'Select State',
+                                multiple: false,
+                                dataSrc: {
+                                    marker: 'STATE_LOCATION_LIST',
+                                    params: {
+                                        useCase: 'SIGNEDIN_GUEST'
+                                    }
+                                }
+                            },
+                            validations: [
+                                {
+                                    type: 'required'
+                                }
+                            ]
+                        }, {
+                            code: 'subPersona',
+                            type: 'select',
+                            templateOptions: {
+                                labelHtml: {
+                                    contents: '<span>$0&nbsp;<span class=\'required-asterisk\'>*</span></span>',
+                                    values: {
+                                        $0: 'State'
+                                    }
+                                },
+                                placeHolder: 'Select State',
+                                multiple: false,
+                                dataSrc: {
+                                    marker: 'SUBPERSONA_LIST',
+                                    params: {
+                                        useCase: 'SIGNEDIN_GUEST'
+                                    }
+                                },
+                                options: { value: 'hm', label: 'HM' }
+                            }
+                        }, {
+                            code: 'district',
+                            type: 'select',
+                            templateOptions: {
+                                labelHtml: {
+                                    contents: '<span>$0&nbsp;<span class=\'required-asterisk\'>*</span></span>',
+                                    values: {
+                                        $0: 'State'
+                                    }
+                                },
+                                placeHolder: 'Select State',
+                                multiple: false,
+                                dataSrc: {
+                                    marker: 'LOCATION_LIST',
+                                    params: {
+                                        useCase: 'SIGNEDIN_GUEST'
+                                    }
+                                },
+                                options: { value: 'hm', label: 'HM' }
+                            }
+                        }]
+                }
+            }]));
+            districtMappingPage.profile = {
+                serveProfile: {
+                    firstName: 'sample-name',
+                    userType: ProfileType.TEACHER
+                }
+            };
+            mockPreferences.getString = jest.fn(() => of(ProfileType.TEACHER));
+            jest.spyOn(districtMappingPage, 'handleDeviceBackButton').mockImplementation(() => {
+                return;
+            });
+            mockAppGlobalService.isUserLoggedIn = jest.fn(() => true);
+            mockFormAndFrameworkUtilService.getLocationConfig = jest.fn(() => Promise.resolve([]));
+            mockTelemetryGeneratorService.generateImpressionTelemetry = jest.fn();
+            mockHeaderService.hideHeader = jest.fn();
+            mockTelemetryGeneratorService.generatePageLoadedTelemetry = jest.fn();
+            mockCommonUtilService.getLoader = jest.fn();
+            mockProfileHandler.getSupportedUserTypes = jest.fn(() => Promise.resolve([{
+                name: 'sample-name',
+                code: 'sample-code'
+            }])) as any;
+            mockFormLocationFactory.buildStateListClosure = jest.fn();
+            mockFormLocationFactory.buildLocationListClosure = jest.fn();
+            // act
+            districtMappingPage.ionViewWillEnter();
+            // assert
+            setTimeout(() => {
+                expect(mockProfileService.getActiveSessionProfile).toHaveBeenCalled();
+                expect(mockLocationHandler.getAvailableLocation).toHaveBeenCalled();
+                expect(mockFormAndFrameworkUtilService.getFormFields).toHaveBeenCalled();
+                expect(mockPreferences.getString).toHaveBeenCalledWith(PreferenceKey.SELECTED_USER_TYPE);
+                expect(mockTelemetryGeneratorService.generateImpressionTelemetry).toHaveBeenNthCalledWith(1,
+                    ImpressionType.PAGE_REQUEST, '',
+                    PageId.LOCATION,
+                    Environment.ONBOARDING);
+                expect(mockTelemetryGeneratorService.generateImpressionTelemetry).toHaveBeenNthCalledWith(2,
+                    ImpressionType.VIEW,
+                    '',
+                    PageId.DISTRICT_MAPPING,
+                    Environment.ONBOARDING, '', '', '', undefined,
+                    featureIdMap.location.LOCATION_CAPTURE);
+                expect(mockHeaderService.hideHeader).toHaveBeenCalled();
+                expect(mockTelemetryGeneratorService.generatePageLoadedTelemetry).toHaveBeenCalledWith(
+                    PageId.LOCATION,
+                    Environment.ONBOARDING,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    []
+                );
+                expect(mockCommonUtilService.getLoader).toHaveBeenCalled();
+                expect(mockProfileHandler.getSupportedUserTypes).toHaveBeenCalled();
+                expect(mockFormLocationFactory.buildStateListClosure).toHaveBeenCalled();
+                expect(mockFormLocationFactory.buildLocationListClosure).toHaveBeenCalled();
+                done();
+            }, 0);
+        });
     });
 
-    it('should populate availableLocationState and availableLocationDistrict', () => {
+    it('should generate telemetry for cancel event', () => {
         // arrange
-        profile['userLocations'] = [{ type: 'state', name: 'Odisha' }, { type: 'district', name: 'Cuttack' }];
-        profile['firstName'] = 'sample_firstname';
-        profile['lastName'] = 'sample_lastname';
-        window.history.replaceState({ profile }, 'MOCK');
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        const correlationList: Array<CorrelationData> = [];
+        correlationList.push({ id: PageId.POPUP_CATEGORY, type: CorReleationDataType.CHILD_UI });
         // act
-        districtMappingPage.checkLocationAvailability();
+        districtMappingPage.cancelEvent('');
         // assert
-        expect(districtMappingPage.availableLocationState).toEqual('Odisha');
-        expect(districtMappingPage.availableLocationDistrict).toEqual('Cuttack');
-
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.SELECT_CANCEL, '',
+            Environment.ONBOARDING,
+            PageId.LOCATION,
+            undefined,
+            undefined,
+            undefined,
+            correlationList
+        );
     });
 
-    it('should populate availableLocationState and availableLocationDistrict if device location is already avaiable', () => {
-        // arrange
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(true));
-        mockPreferences.getString = jest.fn(() => of('{\"state\":\"Odisha\",\"district\":\"Cuttack\"}'));
-        // act
-        districtMappingPage.checkLocationAvailability();
-        // assert
-        expect(districtMappingPage.availableLocationState).toEqual('Odisha');
-        expect(districtMappingPage.availableLocationDistrict).toEqual('Cuttack');
+    describe('isChangedLocation', () => {
+        it('should change new location', () => {
+            // arrange
+            const curr = {
+                children: {
+                    persona: {
+                        state: { name: 'sample-state', id: 'state-id', code: 'new-code' }
+                    }
+                },
+                name: 'sample-user',
+                persona: 'teacher'
+            };
+            const prev = {
+                children: {
+                    persona: {
+                        state: { name: 'sample-state', id: 'state-id', code: 'old-code' },
+                    }
+                },
+                name: 'sample-user',
+                persona: 'teacher'
+            };
+            // act
+            const data = districtMappingPage.isChangedLocation(prev, curr);
+            // assert
+            expect(data).toStrictEqual({ name: 'sample-state', id: 'state-id', code: 'new-code' });
+        });
 
+        it('should not change location', () => {
+            // arrange
+            const curr = {
+                children: {
+                    persona: {
+                        state: { name: 'sample-state', id: 'state-id', code: 'old-code' }
+                    }
+                },
+                name: 'sample-user',
+                persona: 'teacher'
+            };
+            const prev = {
+                children: {
+                    persona: {
+                        state: { name: 'sample-state', id: 'state-id', code: 'old-code' },
+                    }
+                },
+                name: 'sample-user',
+                persona: 'teacher'
+            };
+            // act
+            const data = districtMappingPage.isChangedLocation(prev, curr);
+            // assert
+            expect(data).toBeUndefined();
+        });
     });
 
-    it('should populate availableLocationState and availableLocationDistrict if IP location is already avaiable', () => {
+    it('should invoked generateTelemetryForCategoryClicked', () => {
         // arrange
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockCommonUtilService.isDeviceLocationAvailable = jest.fn(() => Promise.resolve(false));
-        mockCommonUtilService.isIpLocationAvailable = jest.fn(() => Promise.resolve(true));
-        mockPreferences.getString = jest.fn(() => of('{\"state\":\"Odisha\",\"district\":\"Cuttack\"}'));
+        const location = { code: '33', name: 'Tamil Nadu', id: '91d9baae-14f1-477a-955c-f91bd9037f0b', type: 'state' }
+        const correlationList: Array<CorrelationData> = [];
+        correlationList.push({
+            id: location.name,
+            type: location.type.charAt(0).toUpperCase() + location.type.slice(1)
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
         // act
-        districtMappingPage.checkLocationAvailability();
+        districtMappingPage.generateTelemetryForCategoryClicked(location);
         // assert
-        expect(districtMappingPage.availableLocationState).toEqual('Odisha');
-        expect(districtMappingPage.availableLocationDistrict).toEqual('Cuttack');
-
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.SELECT_CATEGORY, '',
+            Environment.ONBOARDING,
+            PageId.LOCATION,
+            undefined,
+            undefined,
+            undefined,
+            correlationList
+        );
     });
 
-    it('shouldn\'t show  NOTNOW flag', () => {
-        // arrange
-        const locationConfigFormResponse = [{ name: 'Skip Location', code: 'skip', values: [] }];
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockFormAndFrameworkUtilService.getLocationConfig = jest.fn(() => Promise.resolve(locationConfigFormResponse));
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => true);
-        // act
-        districtMappingPage.checkLocationMandatory();
-        // assert
-        expect(districtMappingPage.showNotNowFlag).toBeFalsy();
-
+    describe('onFormInitialize', () => {
+        it('should be generate event for category clicked', (done) => {
+            // arrange
+            const formGroup = {
+                valueChanges: of({
+                    children: {
+                        persona: {
+                            state: { name: 'sample-state', id: 'state-id' },
+                            district: { name: 'sample-dist', id: 'dist-id' },
+                            block: { name: 'sample-block', id: 'block-id' }
+                        }
+                    },
+                    name: 'sample-user',
+                    persona: 'teacher'
+                })
+            } as any;
+            jest.spyOn(districtMappingPage, 'isChangedLocation').mockImplementation(() => {
+                return ({});
+            });
+            // act
+            districtMappingPage.onFormInitialize(formGroup);
+            // assert
+            setTimeout(() => {
+                expect(districtMappingPage.formGroup.valueChanges).toBeTruthy();
+                done();
+            }, 0);
+        });
     });
 
-    it('should show  NOTNOW flag if profile is undefined', (done) => {
-        // arrange
-        const locationConfigFormResponse = [{ name: 'Skip Location', code: 'skip', values: ['user'] }];
-        window.history.replaceState({ profile: undefined }, 'MOCK');
-        mockFormAndFrameworkUtilService.getLocationConfig = jest.fn(() => Promise.resolve(locationConfigFormResponse));
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => true);
-        // act
-        districtMappingPage.checkLocationMandatory();
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.showNotNowFlag).toBeTruthy();
-            done();
-        }, 1);
+    describe('onDataLoadStatusChange', () => {
+        it('should initialized loader', (done) => {
+            const dismissFn = jest.fn(() => Promise.resolve());
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+                dismiss: dismissFn
+            }));
+            districtMappingPage.initializeLoader();
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                done();
+            }, 0);
+        });
 
+        it('should be present loader if status is loading', (done) => {
+            // arrange
+            const presentFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                present: presentFn,
+            }));
+            // act
+            districtMappingPage.onDataLoadStatusChange('LOADING');
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                done();
+            }, 0);
+        });
+
+        it('should initialized formData', (done) => {
+            // arrange
+            const dismissFn = jest.fn(() => Promise.resolve());
+            mockCommonUtilService.getLoader = jest.fn(() => ({
+                dismiss: dismissFn,
+            }));
+            districtMappingPage.formGroup = {
+                value: 'sample-value', get: jest.fn(() => ({
+                    value: 'sample-value',
+                    valueChanges: of({
+                        children: {
+                            persona: {
+                                state: { name: 'sample-state', id: 'state-id', code: 'old-code' },
+                                district: { name: 'sample-dist', id: 'dist-id' },
+                                block: { name: 'sample-block', id: 'block-id' }
+                            }
+                        },
+                        name: 'sample-user',
+                        persona: 'teacher'
+                    }),
+                    patchValue: jest.fn()
+                }))
+            } as any;
+            districtMappingPage.profile = {
+                serverProfile: {
+                    userSubType: undefined
+                }
+            };
+            // act
+            districtMappingPage.onDataLoadStatusChange('');
+            // assert
+            setTimeout(() => {
+                expect(mockCommonUtilService.getLoader).toBeTruthy();
+                done();
+            }, 0);
+        });
     });
 
-    it('should show  NOTNOW flag if source is not guest profile', () => {
+    it('should generate telemetry for calegory select', () => {
         // arrange
-        const locationConfigFormResponse = [{ name: 'Skip Location', code: 'skip', values: ['device'] }];
-        window.history.replaceState({ profile, source: 'profile-settings' }, 'MOCK');
-        mockFormAndFrameworkUtilService.getLocationConfig = jest.fn(() => Promise.resolve(locationConfigFormResponse));
-        mockAppGlobalService.isUserLoggedIn = jest.fn(() => false);
+        const corRelationList: CorrelationData[] = [{ id: PageId.POPUP_CATEGORY, type: CorReleationDataType.CHILD_UI }];
+        corRelationList.push({
+            id: 'sample-id',
+            type: CorReleationDataType.STATE
+        });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
         // act
-        districtMappingPage.checkLocationMandatory();
+        districtMappingPage.generateTelemetryForCategorySelect('sample-id', true);
         // assert
-        expect(districtMappingPage.showNotNowFlag).toBeTruthy();
-
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.SELECT_SUBMIT, '',
+            Environment.ONBOARDING,
+            PageId.LOCATION,
+            undefined,
+            undefined,
+            undefined,
+            corRelationList
+        );
     });
 
-    it('should return true if isShowBackButton is not set ', () => {
+    it('should generate telemetry for clearUserLocationSelections', () => {
         // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-
+        const correlationList: Array<CorrelationData> = [];
+        correlationList.push({ id: PageId.POPUP_CATEGORY, type: CorReleationDataType.CHILD_UI });
+        mockTelemetryGeneratorService.generateInteractTelemetry = jest.fn();
+        districtMappingPage.formGroup = {
+            get: jest.fn(() => ({
+                patchValue: jest.fn()
+            })) as any
+        } as any;
         // act
+        districtMappingPage.clearUserLocationSelections();
         // assert
-        expect(districtMappingPage.isShowBackButton).toBeTruthy();
+        expect(mockTelemetryGeneratorService.generateInteractTelemetry).toHaveBeenCalledWith(
+            InteractType.SELECT_CANCEL, '',
+            Environment.ONBOARDING,
+            PageId.LOCATION,
+            undefined,
+            undefined,
+            undefined,
+            correlationList
+        );
     });
 
-    it('should return the value set in isShowBackButton ', () => {
-        // arrange
-        window.history.replaceState({ isShowBackButton: false }, 'MOCK');
-
-        // act
-        // assert
-        expect(districtMappingPage.isShowBackButton).toBeFalsy();
+    it('should invoked ngOnDestroy for unsubscribe', () => {
+        districtMappingPage.ngOnDestroy();
     });
-
-    it('should return valid profile if its set in the state', () => {
-        // arrange
-        window.history.replaceState({ profile: { uid: '12345' } }, 'MOCK');
-
-        // act
-        // assert
-        expect(districtMappingPage.profile).toBeDefined();
-    });
-
-    it('should open district overlay when _showDistrict value is set', (done) => {
-        // arrange
-        districtMappingPage.showStates = false;
-        districtMappingPage.districtSelect = { open: jest.fn(() => { }) };
-        // act
-        districtMappingPage.showDistrict = true;
-
-        // assert
-        setTimeout(() => {
-            expect(districtMappingPage.showDistrict).toBeTruthy();
-            expect(districtMappingPage.districtSelect.open).toHaveBeenCalled();
-            done();
-        }, 1000);
-
-    });
-
-    it('should generate IMPRESSION telemetry when ionViewWillEnter', () => {
-        // arrange
-        window.history.replaceState({ source: 'profile-settings' }, 'MOCK');
-        jest.spyOn(districtMappingPage, 'handleDeviceBackButton').mockImplementation();
-        jest.spyOn(districtMappingPage, 'checkLocationMandatory').mockImplementation();
-        jest.spyOn(districtMappingPage, 'checkLocationAvailability').mockImplementation();
-        jest.spyOn(districtMappingPage, 'getStates').mockImplementation();
-
-        // act
-        districtMappingPage.ionViewWillEnter();
-
-        // assert
-        expect(mockTelemetryGeneratorService.generateImpressionTelemetry).toHaveBeenCalled();
-    });
-
-    it('should populate the stateName and reset the districtName', () => {
-        // arrange
-        districtMappingPage.isAutoPopulated = true;
-        districtMappingPage.isPopulatedLocationChanged = true;
-        // act
-        districtMappingPage.selectState('Odisha', '1234', 'code_1234');
-
-        // assert
-        expect(districtMappingPage.stateName).toEqual('Odisha');
-        expect(districtMappingPage.stateCode).toEqual('code_1234');
-        expect(districtMappingPage.districtName).toEqual('');
-        expect(districtMappingPage.districtCode).toEqual('');
-        expect(districtMappingPage.isPopulatedLocationChanged).toBeTruthy();
-        expect(districtMappingPage.availableLocationDistrict).toEqual('');
-
-        // act
-        districtMappingPage.stateIconClicked();
-        // assert
-        expect(districtMappingPage.stateName).toEqual('');
-
-        // act
-        districtMappingPage.districtIconClicked();
-        // assert
-        expect(districtMappingPage.districtName).toEqual('');
-        expect(districtMappingPage.districtCode).toEqual('');
-
-        // act
-        districtMappingPage.resetDistrictCode();
-        // assert
-        expect(districtMappingPage.districtCode).toEqual('');
-    });
-
-    it('should validate isValid method', () => {
-
-        // assert
-        expect(districtMappingPage.isValid('sample', [{ name: 'sample' }], 'name')).toBeTruthy();
-        expect(districtMappingPage.isValid('sample', undefined, 'name')).toBeFalsy();
-    });
-
-    it('should naviagte to TABS page', () => {
-
-        // act
-        districtMappingPage.skipLocation();
-        // assert
-        expect(mockRouter.navigate).toHaveBeenCalledWith(['/tabs']);
-    });
-
-    it('should return proper INTERACT subtype', () => {
-
-        // arrange
-        districtMappingPage.availableLocationState = 'Odisha';
-        districtMappingPage.stateName = 'Karnataka';
-        districtMappingPage.availableLocationDistrict = 'Cuttack';
-        districtMappingPage.districtName = 'Cuttack';
-
-        // act
-        // assert
-        expect(districtMappingPage.isStateorDistrictChanged()).toEqual(InteractSubtype.STATE_CHANGED);
-
-        // arrange
-        districtMappingPage.availableLocationState = 'Odisha';
-        districtMappingPage.stateName = 'Odisha';
-        districtMappingPage.availableLocationDistrict = 'Cuttack';
-        districtMappingPage.districtName = 'Koppal';
-        // act
-        // assert
-        expect(districtMappingPage.isStateorDistrictChanged()).toEqual(InteractSubtype.DIST_CHANGED);
-
-        // arrange
-        districtMappingPage.availableLocationState = 'Odisha';
-        districtMappingPage.stateName = 'Karnataka';
-        districtMappingPage.availableLocationDistrict = 'Cuttack';
-        districtMappingPage.districtName = 'Koppal';
-        // act
-        // assert
-        expect(districtMappingPage.isStateorDistrictChanged()).toEqual(InteractSubtype.STATE_DIST_CHANGED);
-
-        // arrange
-        districtMappingPage.name = 'sample_name';
-        // act
-        // assert
-        expect(districtMappingPage.validateName()).toBeFalsy();
-    });
-
 });

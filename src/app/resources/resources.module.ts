@@ -1,13 +1,13 @@
-import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ResourcesComponent } from './resources.component';
-import { TranslateModule } from '@ngx-translate/core';
-import { RouterModule } from '@angular/router';
-import { IonicModule } from '@ionic/angular';
-import { ComponentsModule } from '../components/components.module';
-import { DirectivesModule } from '@app/directives/directives.module';
+import { NgModule } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { CommonConsumptionModule } from '@project-sunbird/common-consumption';
+import { DirectivesModule } from '@app/directives/directives.module';
+import { IonicModule } from '@ionic/angular';
+import { TranslateModule } from '@ngx-translate/core';
+import { CommonConsumptionModule } from '@project-sunbird/common-consumption-v8';
+import { ComponentsModule } from '../components/components.module';
+import { ResourcesRoutingModule } from './resources-routing.module';
+import { ResourcesComponent } from './resources.component';
 
 @NgModule({
   declarations: [
@@ -20,12 +20,7 @@ import { CommonConsumptionModule } from '@project-sunbird/common-consumption';
       scrollAssist: true,
     }),
     TranslateModule.forChild(),
-    RouterModule.forChild([
-      {
-        path: '',
-        component: ResourcesComponent
-      }
-    ]),
+    ResourcesRoutingModule,
     ComponentsModule,
     DirectivesModule,
     ReactiveFormsModule,
@@ -33,6 +28,7 @@ import { CommonConsumptionModule } from '@project-sunbird/common-consumption';
   ],
   exports: [
     ResourcesComponent
-  ]
+  ],
+  entryComponents: []
 })
 export class ResourcesModule { }

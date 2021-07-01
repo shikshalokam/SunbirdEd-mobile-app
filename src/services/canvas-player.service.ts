@@ -1,9 +1,11 @@
-import { Injectable } from '@angular/core';
-import { SunbirdSdk } from 'sunbird-sdk';
+import { Inject, Injectable } from '@angular/core';
+import { ContentStateResponse, GetContentStateRequest, SunbirdSdk, SharedPreferences } from 'sunbird-sdk';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import * as X2JS from 'x2js';
-import { ProfileConstants } from '@app/app/app.constant';
-import { Events } from '@ionic/angular';
+import {MaxAttempt, PreferenceKey, ProfileConstants} from '@app/app/app.constant';
+import { Events } from '@app/util/events';
+import { LocalCourseService } from './local-course.service';
+import { CommonUtilService } from './common-util.service';
 
 declare global {
     interface Window {
@@ -13,7 +15,14 @@ declare global {
 @Injectable()
 
 export class CanvasPlayerService {
-    constructor(private _http: HttpClient, private events: Events) { }
+    constructor(
+        private _http: HttpClient,
+        private events: Events,
+        @Inject('SHARED_PREFERENCES') private preferences: SharedPreferences,
+        private localCourseService: LocalCourseService,
+        private commonUtilService: CommonUtilService,
+    ) { }
+
     /**
      * This is the globally available method used by player to communicate with mobile
      */
@@ -58,6 +67,38 @@ export class CanvasPlayerService {
                     break;
                 case 'send':
                     return SunbirdSdk.instance.telemetryService.saveTelemetry(params[0]).subscribe();
+                case 'checkMaxLimit':
+                    const content = params[0];
+                    return this.preferences.getString(PreferenceKey.CONTENT_CONTEXT).toPromise()
+                        .then(async (context: string) => {
+                            if (!context) {
+                                return {
+                                    isLastAttempt: false,
+                                    limitExceeded: false,
+                                    isCloseButtonClicked: false
+                                };
+                            }
+                            const courseContext = JSON.parse(context);
+                            let maxAttempt: MaxAttempt;
+                            if (courseContext.courseId && courseContext.batchId && courseContext.leafNodeIds) {
+                                const getContentStateRequest: GetContentStateRequest = {
+                                    userId: courseContext.userId,
+                                    courseId: courseContext.courseId,
+                                    contentIds: courseContext.leafNodeIds,
+                                    returnRefreshedContentStates: true,
+                                    batchId: courseContext.batchId,
+                                    fields: ['progress', 'score']
+                                };
+
+                                const contentStateResponse: ContentStateResponse = await SunbirdSdk.instance.courseService
+                                    .getContentState(getContentStateRequest).toPromise();
+
+                                const assessmentStatus = this.localCourseService.fetchAssessmentStatus(contentStateResponse, content);
+
+                                maxAttempt = await this.commonUtilService.handleAssessmentStatus(assessmentStatus);
+                            }
+                            return maxAttempt;
+                        });
                 default:
                     console.log('Please use valid method');
             }
@@ -80,7 +121,6 @@ export class CanvasPlayerService {
                         resolve(json);
                     });
                 } catch (error) {
-                    console.log('In error', error);
                     reject('Unable to convert');
                 }
             });
@@ -102,7 +142,6 @@ export class CanvasPlayerService {
                         resolve(data);
                     });
                 } catch (error) {
-                    console.log('', error);
                     reject('Unable to read JSON');
                 }
             });

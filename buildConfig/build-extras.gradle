@@ -3,9 +3,9 @@ buildscript {
         maven {
             url 'https://maven.fabric.io/public'
         }
+        mavenCentral()
         google()
         jcenter()
-        mavenCentral()
     }
     dependencies {
         classpath 'io.fabric.tools:gradle:1.25.1'
@@ -13,10 +13,10 @@ buildscript {
 }
 
 repositories {
-    google()
     maven { 
         url 'https://maven.fabric.io/public' 
     }
+    google()
 }
 
 apply plugin: com.crashlytics.tools.gradle.CrashlyticsPlugin
@@ -60,9 +60,9 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 19
+        minSdkVersion 22
         ext.buildNumber = System.getenv("TRAVIS_BUILD_NUMBER") ?: "local"
-        versionName "2.8.$ext.buildNumber"
+        versionName "3.9.$ext.buildNumber"
         manifestPlaceholders = [fabricKey: "${release_fabric_api_key}", fabricSecret: "${release_fabric_api_secret}"]
         resValue("string", "_app_name", "${app_name}")
         multiDexEnabled true
@@ -105,18 +105,20 @@ android {
             flavorDimensions "default"
             resValue("string", "deeplink_base_url", "${dev_deeplink_base_url}")
             resValue("string", "deeplink_ncert_url", "${dev_deeplink_ncert_url}")
+            resValue("string", "deeplink_igot_url", "${dev_deeplink_igot_url}")
             resValue("string", "custom_scheme_url", "${dev_custom_scheme}")
-            //resValue("string", "app_code_push_id", "${dev_app_code_push_id}")
             buildConfigField 'String', 'BASE_URL', "\"${dev_base_url}\""
             buildConfigField 'String', 'MERGE_ACCOUNT_BASE_URL', "\"${dev_merge_account_base_url}\""
             buildConfigField 'String', 'PRODUCER_ID', "\"${dev_producer_id}\""
             buildConfigField 'String', 'CHANNEL_ID', "\"${dev_channel_id}\""
-            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "4"
+            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "5"
             buildConfigField 'String', 'MOBILE_APP_CONSUMER', '"mobile_device"'
             buildConfigField 'String', 'MOBILE_APP_KEY', "\"${dev_mobile_app_key}\""
             buildConfigField 'String', 'MOBILE_APP_SECRET', "\"${dev_mobile_app_secret}\""
-            buildConfigField 'String', 'OAUTH_SESSION', '"org.genie.KeycloakOAuthSessionService"'
             buildConfigField "String", "OAUTH_REDIRECT_URL","\"${dev_oauth_redirect_url}\""
+            buildConfigField 'String', 'TOU_BASE_URL', "\"${dev_tou_base_url}\""
+            buildConfigField 'String', 'SURVEY_BASE_URL', "\"${dev_survey_base_url}\""
+            buildConfigField 'String', 'PROJECTS_BASE_URL', "\"${dev_projects_base_url}\""
         }
 
         staging {
@@ -124,18 +126,20 @@ android {
             flavorDimensions "default"
             resValue("string", "deeplink_base_url", "${staging_deeplink_base_url}")
             resValue("string", "deeplink_ncert_url", "${staging_deeplink_ncert_url}")
+            resValue("string", "deeplink_igot_url", "${staging_deeplink_igot_url}")
             resValue("string", "custom_scheme_url", "${staging_custom_scheme}")
-            // resValue("string", "app_code_push_id", "${staging_app_code_push_id}")
             buildConfigField 'String', 'BASE_URL', "\"${staging_base_url}\""
             buildConfigField 'String', 'MERGE_ACCOUNT_BASE_URL', "\"${staging_merge_account_base_url}\""
             buildConfigField 'String', 'PRODUCER_ID', "\"${staging_producer_id}\""
             buildConfigField 'String', 'CHANNEL_ID', "\"${staging_channel_id}\""
-            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "4"
+            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "5"
             buildConfigField 'String', 'MOBILE_APP_CONSUMER', '"mobile_device"'
             buildConfigField 'String', 'MOBILE_APP_KEY', "\"${staging_mobile_app_key}\""
             buildConfigField 'String', 'MOBILE_APP_SECRET', "\"${staging_mobile_app_secret}\""
-            buildConfigField 'String', 'OAUTH_SESSION', '"org.genie.KeycloakOAuthSessionService"'
             buildConfigField "String", "OAUTH_REDIRECT_URL","\"${staging_oauth_redirect_url}\""
+            buildConfigField 'String', 'TOU_BASE_URL', "\"${staging_tou_base_url}\""
+            buildConfigField 'String', 'SURVEY_BASE_URL', "\"${staging_survey_base_url}\""
+            buildConfigField 'String', 'PROJECTS_BASE_URL', "\"${staging_projects_base_url}\""
         }
 
         production {
@@ -143,22 +147,24 @@ android {
             flavorDimensions "default"
             resValue("string", "deeplink_base_url", "${production_deeplink_base_url}")
             resValue("string", "deeplink_ncert_url", "${production_deeplink_ncert_url}")
+            resValue("string", "deeplink_igot_url", "${dev_deeplink_igot_url}")
             resValue("string", "custom_scheme_url", "${production_custom_scheme}")
-            //resValue("string", "app_code_push_id", "${production_app_code_push_id}")
             buildConfigField 'String', 'BASE_URL', "\"${production_base_url}\""
             buildConfigField 'String', 'MERGE_ACCOUNT_BASE_URL', "\"${production_merge_account_base_url}\""
             buildConfigField 'String', 'PRODUCER_ID', "\"${production_producer_id}\""
             buildConfigField 'String', 'CHANNEL_ID', "\"${production_channel_id}\""
-            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "4"
+            buildConfigField 'int', 'MAX_COMPATIBILITY_LEVEL', "5"
             buildConfigField 'String', 'MOBILE_APP_CONSUMER', '"mobile_device"'
             buildConfigField 'String', 'MOBILE_APP_KEY', "\"${production_mobile_app_key}\""
             buildConfigField 'String', 'MOBILE_APP_SECRET', "\"${production_mobile_app_secret}\""
-            buildConfigField 'String', 'OAUTH_SESSION', '"org.genie.KeycloakOAuthSessionService"'
             buildConfigField "String", "OAUTH_REDIRECT_URL","\"${production_oauth_redirect_url}\""
+            buildConfigField 'String', 'TOU_BASE_URL', "\"${production_tou_base_url}\""
+            buildConfigField 'String', 'SURVEY_BASE_URL', "\"${production_survey_base_url}\""
+            buildConfigField 'String', 'PROJECTS_BASE_URL', "\"${production_projects_base_url}\""
         }
     }
 
-    task myclean(type: Delete,overwrite: true) {
+    task myclean(type: Delete) {
         def data
         if (System.properties['os.name'].toLowerCase().contains('windows')) {
             data = new File( "$rootDir\\app\\src\\main\\assets\\www\\assets\\data" )
@@ -172,7 +178,7 @@ android {
         }
     }
 
-    task copyDirNotificationConfig(type: Copy,overwrite: true) {
+    task copyDirNotificationConfig(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\notificationconfig"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data"
@@ -184,7 +190,7 @@ android {
         }
     }
 
-    task copyDirFaq(type: Copy,overwrite: true) {
+    task copyDirFaq(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\faq"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data\\faq"
@@ -196,7 +202,7 @@ android {
         }
     }
 
-    task copyDirContentRating(type: Copy,overwrite: true) {
+    task copyDirContentRating(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\content-rating"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data\\content-rating"
@@ -208,7 +214,7 @@ android {
         }
     }
 
-    task copyDirDev(type: Copy,overwrite: true) {
+    task copyDirDev(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\dev"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data"
@@ -220,7 +226,7 @@ android {
         }
     }
 
-    task copyDirStaging(type: Copy,overwrite: true) {
+    task copyDirStaging(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\staging"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data"
@@ -232,7 +238,7 @@ android {
         }
     }
 
-    task copyDirProd(type: Copy,overwrite: true) {
+    task copyDirProd(type: Copy) {
         if (System.properties['os.name'].toLowerCase().contains('windows')){
             from "$rootDir\\app\\data\\prod"
             into "$rootDir\\app\\src\\main\\assets\\www\\assets\\data"
@@ -261,15 +267,30 @@ android {
         def versionName = name
 
         if (flavorName.equals("dev")) {
-            preBuild.dependsOn(dev)
+            // preBuild.dependsOn(dev)
+            preBuild.dependsOn  myclean
+            preBuild.dependsOn  copyDirDev
+            preBuild.dependsOn  copyDirNotificationConfig
+            preBuild.dependsOn  copyDirFaq
+            preBuild.dependsOn  copyDirContentRating
             println "inside dev task"
         }
         if (flavorName.equals("staging")) {
-            preBuild.dependsOn(staging)
+            // preBuild.dependsOn(staging)
+            preBuild.dependsOn  myclean
+            preBuild.dependsOn  copyDirStaging
+            preBuild.dependsOn  copyDirNotificationConfig
+            preBuild.dependsOn  copyDirFaq
+            preBuild.dependsOn  copyDirContentRating
             println "inside staging task"
         }
         if (flavorName.equals("production")) {
-            preBuild.dependsOn(prod)
+            // preBuild.dependsOn(prod)
+            preBuild.dependsOn  myclean
+            preBuild.dependsOn  copyDirProd
+            preBuild.dependsOn  copyDirNotificationConfig
+            preBuild.dependsOn  copyDirFaq
+            preBuild.dependsOn  copyDirContentRating
             println "inside production task"
         }
 
@@ -279,7 +300,7 @@ android {
         if (variant.buildType.isDebuggable()) {
             versionName += '-debug';
         }
-        flavor.versionName = versionName;
+        // flavor.versionName = versionName;
         variant.buildConfigField("String", "REAL_VERSION_NAME", "\"${versionName}\"");
         variant.outputs.each { output ->
             // output.versionNameOverride = versionName
@@ -291,8 +312,7 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.google.android.gms:play-services-analytics:10.+'
-    implementation 'com.android.support:multidex:1.0.3'
+    implementation 'androidx.multidex:multidex:2.0.1'
     implementation('com.crashlytics.sdk.android:crashlytics:2.9.4@aar') {
         transitive = true;
     }

@@ -1,20 +1,13 @@
 import {
   Component,
-  NgZone,
-  ViewChild,
   EventEmitter,
-  Output,
   Input,
   OnChanges,
-  SimpleChanges,
-  OnInit
+  OnInit, Output,
+  SimpleChanges
 } from '@angular/core';
-import {
-  Events,
-  // Navbar,
-  ModalController
-} from '@ionic/angular';
 import { FileSizePipe } from '@app/pipes/file-size/file-size';
+import { Events } from '@app/util/events';
 
 @Component({
   selector: 'app-sb-download-popup',
@@ -34,8 +27,8 @@ export class SbDownloadPopupComponent implements OnInit, OnChanges {
   @Input() showDownload: any;
   @Input() contentAvailableLocally: any;
   @Input() contentSize: any;
+  @Input() showPopover: any;
   popupUpdate: any;
-  showPopover: any;
   constContentSize: any;
   didViewLoad: boolean;
 
@@ -45,7 +38,7 @@ export class SbDownloadPopupComponent implements OnInit, OnChanges {
   }
 
   ngOnInit() {
-
+    this.queuedIdentifiers = typeof this.queuedIdentifiers === 'number' ? new Array(this.queuedIdentifiers) : this.queuedIdentifiers;
   }
 
   togglePopover(popover?) {
@@ -64,7 +57,7 @@ export class SbDownloadPopupComponent implements OnInit, OnChanges {
     this.popupUpdate = this.isUpdateAvail && this.contentAvailableLocally;
     this.constContentSize = this.fileSizePipe.transform(this.contentSize, 2);
     if (changes['queuedIdentifiers']) {
-      this.queuedIdentifiers = this.queuedIdentifiers;
+      this.queuedIdentifiers = typeof this.queuedIdentifiers === 'number' ? new Array(this.queuedIdentifiers) : this.queuedIdentifiers;
     }
     if (changes['currentCount']) {
       this.currentCount = this.currentCount;

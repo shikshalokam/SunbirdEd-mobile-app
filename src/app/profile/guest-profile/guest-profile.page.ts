@@ -1,6 +1,7 @@
 import { TranslateService } from '@ngx-translate/core';
 import { Component, Inject, OnInit } from '@angular/core';
-import { Events, ToastController } from '@ionic/angular';
+import { ToastController } from '@ionic/angular';
+import { Events } from '@app/util/events';
 import {
   Framework,
   FrameworkCategoryCodesGroup,
@@ -13,13 +14,15 @@ import {
   SharedPreferences,
   Profile
 } from 'sunbird-sdk';
-import { ActivatedRoute, Router, NavigationExtras } from '@angular/router';
+import { Router, NavigationExtras } from '@angular/router';
 import { AppGlobalService } from '@app/services/app-global-service.service';
 import { CommonUtilService } from '@app/services/common-util.service';
 import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
 import { AppHeaderService } from '@app/services/app-header.service';
 import { PageId, Environment, InteractType, InteractSubtype } from '@app/services/telemetry-constants';
 import { ProfileConstants, RouterLinks, PreferenceKey } from '@app/app/app.constant';
+import { ProfileHandler } from '@app/services/profile-handler';
+import { TagPrefixConstants } from '@app/services/segmentation-tag/segmentation-tag.service';
 
 @Component({
   selector: 'app-guest-profile',
@@ -43,6 +46,8 @@ export class GuestProfilePage implements OnInit {
   headerObservable: any;
   isUpgradePopoverShown = false;
   deviceLocation: any;
+  public supportedProfileAttributes: { [key: string]: string } = {};
+  public currentUserTypeConfig: any = {};
 
   constructor(
     @Inject('PROFILE_SERVICE') private profileService: ProfileService,
@@ -56,11 +61,11 @@ export class GuestProfilePage implements OnInit {
     private translate: TranslateService,
     private headerService: AppHeaderService,
     public toastController: ToastController,
-    private route: ActivatedRoute,
-    private router: Router
+    private router: Router,
+    private profileHandler: ProfileHandler
   ) { }
 
-  ngOnInit() {
+  async ngOnInit() {
     this.selectedLanguage = this.translate.currentLang;
 
     // Event for optional and forceful upgrade
@@ -71,14 +76,19 @@ export class GuestProfilePage implements OnInit {
       }
     });
 
-    // TODO: Need to make an get Profile user details API call.
     this.refreshProfileData();
+
     this.events.subscribe('refresh:profile', () => {
+      this.refreshProfileData(false, false);
+    });
+
+    this.events.subscribe(AppGlobalService.PROFILE_OBJ_CHANGED, () => {
       this.refreshProfileData(false, false);
     });
 
     this.refreshSignInCard();
     this.appGlobalService.generateConfigInteractEvent(PageId.GUEST_PROFILE);
+    this.supportedProfileAttributes = await this.profileHandler.getSupportedProfileAttributes();
   }
 
   ionViewWillEnter() {
@@ -104,8 +114,9 @@ export class GuestProfilePage implements OnInit {
   }
 
   async refreshProfileData(refresher: any = false, showLoader: boolean = true) {
-    this.loader = await this.commonUtilService.getLoader();
-
+    if (!this.loader) {
+      this.loader = await this.commonUtilService.getLoader();
+    }
     if (showLoader) {
       await this.loader.present();
     }
@@ -118,10 +129,20 @@ export class GuestProfilePage implements OnInit {
     }
 
     this.profileService.getActiveSessionProfile({ requiredFields: ProfileConstants.REQUIRED_FIELDS }).toPromise()
-      .then((res: any) => {
+      .then(async (res: any) => {
         this.profile = res;
+        const tagObj = {
+          board: res.board,
+          grade: res.grade,
+          syllabus: res.syllabus,
+          medium: res.medium,
+        };
+        window['segmentation'].SBTagService.pushTag(tagObj, TagPrefixConstants.USER_ATRIBUTE, true);
         this.getSyllabusDetails();
         this.refreshSignInCard();
+        this.supportedProfileAttributes = await this.profileHandler.getSupportedProfileAttributes(true, this.profile.profileType);
+        const supportedUserTypes = await this.profileHandler.getSupportedUserTypes();
+        this.currentUserTypeConfig = supportedUserTypes.find(userTypes => userTypes.code ===  this.profile.profileType);
         setTimeout(() => {
           if (refresher) { refresher.target.complete(); }
         }, 500);
@@ -134,7 +155,8 @@ export class GuestProfilePage implements OnInit {
   refreshSignInCard() {
     const profileType = this.appGlobalService.getGuestUserType();
 
-    if ((profileType === ProfileType.TEACHER && this.appGlobalService.DISPLAY_SIGNIN_FOOTER_CARD_IN_PROFILE_TAB_FOR_TEACHER) ||
+    if ((this.commonUtilService.isAccessibleForNonStudentRole(profileType)
+      && this.appGlobalService.DISPLAY_SIGNIN_FOOTER_CARD_IN_PROFILE_TAB_FOR_TEACHER) ||
       (profileType === ProfileType.STUDENT && this.appGlobalService.DISPLAY_SIGNIN_FOOTER_CARD_IN_PROFILE_TAB_FOR_STUDENT)) {
       this.showSignInCard = true;
     } else {
@@ -156,23 +178,20 @@ export class GuestProfilePage implements OnInit {
       InteractType.TOUCH,
       InteractSubtype.EDIT_CLICKED,
       Environment.HOME,
-      PageId.GUEST_PROFILE,undefined,values);
+      PageId.GUEST_PROFILE, undefined, values);
     this.router.navigate([RouterLinks.GUEST_EDIT], navigationExtras);
   }
 
   getSyllabusDetails() {
     let selectedFrameworkId = '';
-
     const getSuggestedFrameworksRequest: GetSuggestedFrameworksRequest = {
       language: this.translate.currentLang,
       requiredCategories: FrameworkCategoryCodesGroup.DEFAULT_FRAMEWORK_CATEGORIES
     };
     this.frameworkUtilService.getActiveChannelSuggestedFrameworkList(getSuggestedFrameworksRequest).toPromise()
-      .then((result: Framework[]) => {
+      .then(async (result: Framework[]) => {
         if (result && result !== undefined && result.length > 0) {
-
           result.forEach(element => {
-
             if (this.profile && this.profile.syllabus && this.profile.syllabus.length && this.profile.syllabus[0] === element.identifier) {
               this.syllabus = element.name;
               selectedFrameworkId = element.identifier;
@@ -180,18 +199,18 @@ export class GuestProfilePage implements OnInit {
           });
 
           if (selectedFrameworkId !== undefined && selectedFrameworkId.length > 0) {
-            this.getFrameworkDetails(selectedFrameworkId);
+            this.getFrameworkDetails();
           } else {
-            this.loader.dismiss();
+            await this.loader.dismiss();
           }
         } else {
-          this.loader.dismiss();
+          await this.loader.dismiss();
           this.commonUtilService.showToast(this.commonUtilService.translateMessage('NO_DATA_FOUND'));
         }
       });
   }
 
-  getFrameworkDetails(frameworkId?: string): void {
+  getFrameworkDetails(): void {
     const frameworkDetailsRequest: FrameworkDetailsRequest = {
       frameworkId: (this.profile && this.profile.syllabus && this.profile.syllabus[0]) ? this.profile.syllabus[0] : '',
       requiredCategories: FrameworkCategoryCodesGroup.DEFAULT_FRAMEWORK_CATEGORIES
@@ -212,7 +231,6 @@ export class GuestProfilePage implements OnInit {
         if (this.profile.subject && this.profile.subject.length) {
           this.subjects = this.getFieldDisplayValues(this.profile.subject, 3);
         }
-
         await this.loader.dismiss();
       });
   }
@@ -227,7 +245,7 @@ export class GuestProfilePage implements OnInit {
     return this.commonUtilService.arrayToString(displayValues);
   }
 
-  buttonClick(isNetAvailable?) {
+  onLoginClick() {
     this.commonUtilService.showToast('NO_INTERNET_TITLE', false, '', 3000, 'top');
   }
 

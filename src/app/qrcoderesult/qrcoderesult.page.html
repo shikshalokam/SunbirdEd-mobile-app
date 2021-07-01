@@ -18,18 +18,30 @@
 
   </ion-toolbar>
 </ion-header>
-<div #stickyPillsRef class="sb-chapter-dd" (click)="openTextbookToc()" *ngIf="results.length>1">
+<div #stickyPillsRef class="sb-chapter-dd" (click)="openTextbookToc()" *ngIf="(results.length>1 || (results.length===1 && results[0].contentData.trackable.enabled === 'Yes'))">
   <span class="pull-left">{{stckyParent || ('SELECT_CHAPTER' | translate)}}</span>
   <span class="pull-right">
-    <ion-icon name="ios-arrow-dropright-circle"></ion-icon>
+    <ion-icon md="caret-forward-circle" ios="chevron-forward-circle"></ion-icon>
   </span>
 </div>
-
-<ion-content *ngIf="results.length>1" padding  [scrollEvents]="true" (ionScroll)="onScroll($event)">
-  <div class="card-container" *ngFor="let content of results; let i = index">
+<div class="m-n" *ngIf="showSheenAnimation" style="margin-top: 50px;">
+  <div class="skeleton-search-card" *ngFor="let i of [0,1,2,3,4,5,6,7,8,9,10,11,12,13]" style="display: flex;padding-left: 10px;">
+    <ion-avatar slot="start" class="skleton-avatar">
+      <app-skeleton-item height="56px" width="56px" style="height:56px; width:56px;"></app-skeleton-item>
+    </ion-avatar>
+    <div style=" flex: 1;">
+      <app-skeleton-item height="12px" width="80%" style="height:12px; width:100%; padding-bottom: 8px;">
+      </app-skeleton-item>
+      <app-skeleton-item height="12px" width="50%"
+        style="height:12px; width:100%; padding-bottom: 16px;margin-top:8px;"></app-skeleton-item>
+    </div>
+  </div>
+</div>
+<ion-content *ngIf="(results.length>1 || (results.length===1 && results[0].contentData.trackable.enabled === 'Yes'))" class="ion-padding" [scrollEvents]="true" (ionScroll)="onScroll($event)">
+  <div class="card-container" *ngFor="let content of results; let i = index"
+  [ngClass]="{'offline': !content?.isAvailableLocally && !commonUtilService.networkInfo.isNetworkAvailable}">
     <ion-row class="P010">
       <ul class="breadcrumbs">
-        <!-- (click)="showSwitchUserAlert(true)" -->
         <li *ngFor="let result of paths[i]" (click)="navigateToDetailsPage(paths[i][0], paths[i], content?.identifier)">
           {{ (result?.contentData?.name?.length>30)? (result?.contentData?.name | slice:0:30)+'...' :
           (result?.contentData?.name) }}
@@ -37,12 +49,12 @@
       </ul>
     </ion-row>
     <ion-card [id]="content.identifier">
-      <ion-row [attr.data-sticky-unit]="content.contentData.name" [attr.data-index]= "i">
+      <ion-row [attr.data-sticky-unit]="content.contentData.name" [attr.data-index]="i">
         <ion-col size="12">
-          <ion-card-content (click)="playOnline(content)">
+          <ion-card-content (click)="playOnline(content, true)">
             <ion-row class="top">
               <ion-col size="3" class="img-container">
-                <img class="app-icon"
+                <img class="app-icon" alt="app-icon"
                   [src]="commonUtilService.convertFileSrc(content?.contentData?.appIcon) || defaultImg" />
               </ion-col>
               <ion-col size="9">
@@ -64,53 +76,54 @@
         </ion-col>
       </ion-row>
       <!-- download and play online -->
-      <div no-padding *ngIf="content.contentData?.streamingUrl  &&  !content.isAvailableLocally">
-        <ion-row no-padding>
-          <ion-col no-padding style="z-index: 100;" *ngIf="!content?.downloadable"
+      <div class="ion-no-padding" *ngIf="content.contentData?.streamingUrl  &&  !content.isAvailableLocally">
+        <ion-row class="ion-no-padding">
+          <ion-col class="ion-no-padding btn-space" style="z-index: 100;" *ngIf="!content?.downloadable"
             (click)="navigateToDetailsPage(content)">
-            <button class="qr-result-btn" no-padding expand="block" color="light" style="color:#0D7DFC; z-index: 100;"
-              text-uppercase>
-              <ion-icon class="downloadicon" name="arrow-round-down"></ion-icon>&nbsp;
+            <button class="qr-result-btn download-info ion-no-padding ion-text-uppercase" expand="block" color="light"
+              style="color:#0D7DFC; z-index: 100;" [ngClass]="!(content.contentData?.downloadUrl) ? 'download-disabled' : null">
+              <ion-icon class="downloadicon" name="arrow-down"></ion-icon>&nbsp;
               {{'DOWNLOAD'| translate}}
             </button>
           </ion-col>
-          <ion-col no-padding *ngIf="content.contentData?.streamingUrl && !(content.mimeType === 'application/vnd.ekstep.h5p-archive')">
-            <button no-padding class="custom-btn play qr-result-btn " expand="block" (click)="playContent(content)">
-              <ion-icon name="play"></ion-icon>&nbsp;{{'PLAY' | translate}}
+          <ion-col class="ion-no-padding"
+            *ngIf="content.contentData?.streamingUrl && !(content.mimeType === 'application/vnd.ekstep.h5p-archive')">
+            <button class="custom-btn play qr-result-btn ion-no-padding" expand="block" (click)="playContent(content, true)">
+              <ion-icon name="play" style="margin-left: -1rem;"></ion-icon>&nbsp;<span class="play-btn-info">{{'PLAY' | translate}}</span>
             </button>
           </ion-col>
         </ion-row>
       </div>
       <!-- play locally if content downloaded  -->
-      <div no-padding *ngIf="content.isAvailableLocally && !content.isUpdateAvailable">
-        <button class="qr-result-btn default" no-padding expand="block" (click)="navigateToDetailsPage(content)"
-          text-uppercase [disabled]="isDownloadStarted">
-          <ion-icon name="play"></ion-icon>&nbsp;{{'PLAY'|translate}}
+      <div class="ion-no-padding" *ngIf="content.isAvailableLocally && !content.isUpdateAvailable">
+        <button class="qr-result-btn default ion-no-padding ion-text-uppercase" expand="block"
+          (click)="navigateToDetailsPage(content)" [disabled]="isDownloadStarted">
+          <ion-icon name="play" style="margin-left: -1rem;"></ion-icon>&nbsp;<span class="play-btn-info">{{'PLAY' | translate}}</span>
         </button>
       </div>
 
       <!-- Download content if not available locally  -->
-      <div no-padding *ngIf="!content.contentData?.streamingUrl && !content.isAvailableLocally">
-        <button class="qr-result-btn" no-padding expand="block" color="light" style="color:#0D7DFC"
-          (click)="navigateToDetailsPage(content)" text-uppercase>
-          <ion-icon class="downloadicon" name="arrow-round-down"></ion-icon>&nbsp;{{'DOWNLOAD'| translate}}
+      <div class="ion-no-padding" *ngIf="!content.contentData?.streamingUrl && !content.isAvailableLocally">
+        <button class="qr-result-btn download-info ion-no-padding ion-text-uppercase" expand="block" color="light"
+          style="color:#0D7DFC" (click)="navigateToDetailsPage(content)">
+          <ion-icon class="downloadicon" name="arrow-down"></ion-icon>&nbsp;{{'DOWNLOAD'| translate}}
         </button>
       </div>
 
       <!-- Update and play on device  -->
-      <div no-padding *ngIf="content.isUpdateAvailable  &&  content.isAvailableLocally">
-        <ion-row no-padding>
+      <div class="ion-no-padding" *ngIf="content.isUpdateAvailable  &&  content.isAvailableLocally">
+        <ion-row class="ion-no-padding">
           <ion-col style="z-index: 100;" *ngIf="content.isUpdateAvailable" (click)="navigateToDetailsPage(content)"
-            no-padding>
-            <button class="qr-result-btn" no-margin expand="block" color="light" style="color:#0D7DFC; z-index: 100;"
-              text-uppercase>
-              <ion-icon class="downloadicon" name="arrow-round-down"></ion-icon>&nbsp;{{ 'UPDATE' | translate }}
+            class="ion-no-padding">
+            <button class="qr-result-btn ion-text-uppercase ion-no-margin" expand="block" color="light"
+              style="color:#0D7DFC; z-index: 100;">
+              <ion-icon class="downloadicon" name="arrow-down"></ion-icon>&nbsp;{{ 'UPDATE' | translate }}
             </button>
           </ion-col>
-          <ion-col no-padding *ngIf="content.contentData?.streamingUrl" no-padding>
-            <button class="custom-btn play qr-result-btn default" no-margin expand="block"
+          <ion-col class="ion-no-padding" *ngIf="content.contentData?.streamingUrl">
+            <button class="custom-btn play qr-result-btn default ion-no-margin" expand="block"
               (click)="navigateToDetailsPage(content)">
-              <ion-icon name="play"></ion-icon>&nbsp;{{'PLAY' | translate}}
+              <ion-icon name="play" style="margin-left: -1rem;"></ion-icon>&nbsp;<span class="play-btn-info">{{'PLAY' | translate}}</span>
             </button>
           </ion-col>
         </ion-row>
@@ -118,15 +131,3 @@
     </ion-card>
   </div>
 </ion-content>
-
-<div class="loading-backdrop" *ngIf="showLoading && !isDownloadStarted" text-center>
-  <div class="backdrop-container">
-    <ion-label>{{ 'LOADING_CONTENTS' | translate: {'%s': downloadProgress ? (downloadProgress | number: '1.0-0') : 0} }}
-    </ion-label>
-    <app-pb-horizontal [progress]="downloadProgress" isOnBoardCard="false"></app-pb-horizontal>
-  </div>
-
-  <div class="backdrop-footer">
-    <ion-button size="small" (click)="cancelDownload()">{{ 'CANCEL' | translate }}</ion-button>
-  </div>
-</div>

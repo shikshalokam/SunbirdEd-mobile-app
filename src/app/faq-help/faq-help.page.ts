@@ -1,32 +1,31 @@
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Component, Inject, ViewChild, ElementRef, OnInit, NgZone } from '@angular/core';
-import { Platform } from '@ionic/angular';
+import { ModalController, Platform } from '@ionic/angular';
 import { TelemetryGeneratorService } from '@app/services/telemetry-generator.service';
 import { CommonUtilService } from '@app/services/common-util.service';
 import { AppGlobalService, } from '@app/services/app-global-service.service';
 import { AppHeaderService, } from '@app/services/app-header.service';
 import { FormAndFrameworkUtilService, } from '@app/services/formandframeworkutil.service';
-import { Environment, InteractType, PageId, InteractSubtype, ImpressionType } from '@app/services/telemetry-constants';
+import { Environment, InteractType, PageId, InteractSubtype, ImpressionType, CorReleationDataType } from '@app/services/telemetry-constants';
 import {
-  ProfileService,
-  ContentService,
-  DeviceInfo,
   SharedPreferences,
   TelemetryObject,
   GetSystemSettingsRequest,
   SystemSettingsService,
   SystemSettings,
   FaqService,
-  GetFaqRequest
+  GetFaqRequest,
+  CorrelationData,
 } from 'sunbird-sdk';
 import { PreferenceKey, appLanguages, RouterLinks } from '../app.constant';
-import { SocialSharing } from '@ionic-native/social-sharing/ngx';
 import { Location } from '@angular/common';
 import { AppVersion } from '@ionic-native/app-version/ngx';
 import { TranslateService } from '@ngx-translate/core';
 import { Observable, Subscription } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
+import { VideoConfig } from './faq-help-data';
+import { ContentViewerComponent } from './../components/content-viewer/content-viewer.component';
 
 @Component({
   selector: 'app-faq-help',
@@ -48,29 +47,39 @@ export class FaqHelpPage implements OnInit {
   appName: string;
   loading?: any;
   private messageListener: (evt: Event) => void;
-  @ViewChild('f') iframe: ElementRef;
+  @ViewChild('f', { static: false }) iframe: ElementRef;
   backButtonFunc: Subscription;
   headerObservable: any;
-  shownGroup: any;
-  isNoClicked: boolean;
-  isYesClicked: boolean;
-  isSubmitted: boolean;
-  data: any;
+  faqData: {
+    categories: {
+      name: string,
+      videos?: any[],
+      faqs?: {
+        topic: string,
+        description: string
+      }[],
+    }[],
+    constants: any
+  }
   constants: any;
-  faqs: any;
   jsonURL: any;
-  textValue: any;
   value: any;
+  corRelation: Array<CorrelationData> = [];
+  selectedFaqCategory: {
+    name: string,
+    videos?: any[],
+    faqs?: {
+      topic: string,
+      description: string
+    }[],
+    constants?: any
+  } | undefined;
   constructor(
     @Inject('SHARED_PREFERENCES') private preferences: SharedPreferences,
-    @Inject('PROFILE_SERVICE') private profileService: ProfileService,
-    @Inject('CONTENT_SERVICE') private contentService: ContentService,
-    @Inject('DEVICE_INFO') private deviceInfo: DeviceInfo,
     @Inject('SYSTEM_SETTINGS_SERVICE') private systemSettingsService: SystemSettingsService,
     @Inject('FAQ_SERVICE') private faqService: FaqService,
     private domSanitizer: DomSanitizer,
     private telemetryGeneratorService: TelemetryGeneratorService,
-    private socialSharing: SocialSharing,
     private commonUtilService: CommonUtilService,
     private appGlobalService: AppGlobalService,
     private headerService: AppHeaderService,
@@ -81,8 +90,18 @@ export class FaqHelpPage implements OnInit {
     private translate: TranslateService,
     private http: HttpClient,
     private router: Router,
-    private zone: NgZone
+    private zone: NgZone,
+    private modalCtrl: ModalController,
   ) {
+    this.getNavParam();
+  }
+
+  private getNavParam() {
+    const navExtras = this.router.getCurrentNavigation().extras && this.router.getCurrentNavigation().extras.state;
+    if (navExtras) {
+      this.corRelation = navExtras.corRelation || [];
+      this.corRelation.push({ id: PageId.FAQ, type: CorReleationDataType.FROM_PAGE });
+    }
   }
 
   ngOnInit() {
@@ -100,7 +119,12 @@ export class FaqHelpPage implements OnInit {
       ImpressionType.VIEW,
       '',
       PageId.FAQ,
-      Environment.USER);
+      Environment.USER,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      this.corRelation);
   }
 
   receiveMessage(event) {
@@ -110,10 +134,6 @@ export class FaqHelpPage implements OnInit {
     if (event.data && event.data.action && event.data.action !== 'initiate-email-clicked') {
       this.generateInteractTelemetry(event.data.action, values);
     }
-  }
-
-  public getJSON(): Observable<any> {
-    return this.http.get(this.jsonURL);
   }
 
   private async getSelectedLanguage() {
@@ -126,11 +146,10 @@ export class FaqHelpPage implements OnInit {
   private async getDataFromUrl() {
     const faqRequest: GetFaqRequest = { language: '', faqUrl: '' };
     const getSystemSettingsRequest: GetSystemSettingsRequest = {
-      id: 'faqURL'
+      id: 'appFaqURL'
     };
     await this.systemSettingsService.getSystemSettings(getSystemSettingsRequest).toPromise()
       .then((res: SystemSettings) => {
-        console.log('faqdata', res);
         faqRequest.faqUrl = res.value;
       }).catch(err => {
       });
@@ -141,27 +160,24 @@ export class FaqHelpPage implements OnInit {
     } else {
       faqRequest.language = 'en';
     }
+    this.fetchFaqData(faqRequest);
+  }
 
+  private fetchFaqData(faqRequest, retry=true) {
     this.faqService.getFaqDetails(faqRequest).subscribe(data => {
-      this.zone.run( () => {
-        this.data = data;
-        this.constants = this.data.constants;
-        this.faqs = this.data.faqs;
-        // tslint:disable-next-line:prefer-for-of
-        for (let i = 0; i < this.data.faqs.length; i++) {
-          if (this.data.faqs[i].topic.includes('{{APP_NAME}}')) {
-            this.data.faqs[i].topic = this.data.faqs[i].topic.replace('{{APP_NAME}}', this.appName);
-          } else {
-            this.data.faqs[i].topic = this.data.faqs[i].topic;
-          }
-          if (this.data.faqs[i].description.includes('{{APP_NAME}}')) {
-            this.data.faqs[i].description = this.data.faqs[i].description.replace('{{APP_NAME}}', this.appName);
-          } else {
-            this.data.faqs[i].description = this.data.faqs[i].description;
-          }
-        }
+      this.zone.run(() => {
+        this.faqData = data as any;
+        this.constants = this.faqData.constants;
         this.loading.dismiss();
       });
+    }, error => {
+      console.error(error);
+      faqRequest.language = 'en';
+      if (retry) {
+        this.fetchFaqData(faqRequest, false);
+        return;
+      }
+      this.loading.dismiss();
     });
   }
 
@@ -224,10 +240,15 @@ export class FaqHelpPage implements OnInit {
   }
 
   handleBackButton() {
+    if (this.selectedFaqCategory) {
+      this.selectedFaqCategory = undefined;
+      return;
+    }
     this.location.back();
   }
 
   generateInteractTelemetry(interactSubtype, values) {
+    values.values.value.description = values.values.value.description.replace(/(<([^>]+)>)/ig, '');
     this.telemetryGeneratorService.generateInteractTelemetry(
       InteractType.TOUCH, interactSubtype,
       Environment.USER,
@@ -244,86 +265,90 @@ export class FaqHelpPage implements OnInit {
   }
 
   // toggle the card
-  toggleGroup(group) {
-    const telemetryObject = new TelemetryObject((group + 1).toString(), 'faq', '');
+  toggleGroup(event) {
+    if (!event || !event.data) {
+      return;
+    }
+    const telemetryObject = new TelemetryObject((event.data.position+1).toString(), 'faq', '');
     this.telemetryGeneratorService.generateInteractTelemetry(InteractType.TOUCH,
-      InteractSubtype.HELP_SECTION_CLICKED,
+      event.data.action,
       Environment.USER,
       PageId.FAQ,
       telemetryObject,
       undefined);
-
-    this.isNoClicked = false;
-    this.isYesClicked = false;
-    this.isSubmitted = false;
-
-    let isCollapsed = true;
-    if (this.isGroupShown(group)) {
-      isCollapsed = false;
-      this.shownGroup = null;
-    } else {
-      isCollapsed = false;
-      this.shownGroup = group;
-    }
   }
 
-  // to check whether the card is toggled or not
-  isGroupShown(group) {
-    return this.shownGroup === group;
-  }
-
-  noClicked(i) {
-    this.value = {};
-    if (!this.isNoClicked) {
-      this.isNoClicked = true;
+  logInteractEvent(event) {
+    if (!event || !event.data) {
+      return;
     }
-    this.value.action = 'no-clicked';
-    this.value.position = i;
-    this.value.value = {};
-    this.value.value.topic = this.data.faqs[i].topic;
-    this.value.value.description = this.data.faqs[i].description;
-    window.parent.postMessage(this.value, '*');
-
-  }
-
-  yesClicked(i) {
-    this.value = {};
-    if (!this.isYesClicked) {
-      this.isYesClicked = true;
-    }
-
-    this.value.action = 'yes-clicked';
-    this.value.position = i;
-    this.value.value = {};
-    this.value.value.topic = this.data.faqs[i].topic;
-    this.value.value.description = this.data.faqs[i].description;
+    this.value = event.data;
     window.parent.postMessage(this.value, '*');
   }
 
-  submitClicked(textValue, i) {
-    this.isSubmitted = true;
-    this.value.action = 'no-clicked';
-    this.value.position = i;
-    this.value.value = {};
-    this.value.value.topic = this.data.faqs[i].topic;
-    this.value.value.description = this.data.faqs[i].description;
-    this.value.value.knowMoreText = textValue;
-    window.parent.postMessage(this.value, '*');
-    this.textValue = '';
-  }
-
-  navigateToReportIssue() {
+  async navigateToReportIssue() {
     this.telemetryGeneratorService.generateInteractTelemetry(InteractType.TOUCH,
       InteractSubtype.REPORT_ISSUE_CLICKED,
       Environment.USER,
       PageId.FAQ,
       undefined,
       undefined);
+
+    const formConfig = await this.formAndFrameworkUtilService.getFormConfig();
+    this.appGlobalService.formConfig = formConfig;
     this.router.navigate([RouterLinks.FAQ_REPORT_ISSUE], {
       state: {
-        data: this.data
+        data: this.faqData,
+        corRelation: this.corRelation
       }
     });
+  }
+
+  onCategorySelect(event) {
+    this.selectedFaqCategory = undefined;
+    if (!event || !event.data) {
+      return;
+    }
+    setTimeout(() => {
+      this.replaceFaqText(event.data);
+    }, 0);
+  }
+
+  replaceFaqText(faqData) {
+    for (let i = 0; i < faqData.faqs.length; i++) {
+      if (faqData.faqs[i].topic.includes('{{APP_NAME}}')) {
+        faqData.faqs[i].topic = faqData.faqs[i].topic.replace('{{APP_NAME}}', this.appName);
+      }
+      if (faqData.faqs[i].description.includes('{{APP_NAME}}')) {
+        faqData.faqs[i].description = faqData.faqs[i].description.replace('{{APP_NAME}}', this.appName);
+      }
+    }
+
+    this.selectedFaqCategory = faqData;
+    this.selectedFaqCategory.constants = this.constants;
+  }
+
+  enableFaqReport(event) {
+    this.navigateToReportIssue();
+  }
+
+  async onVideoSelect(event) {
+    if (!event || !event.data) {
+      return;
+    }
+
+    const video = VideoConfig;
+    video.metadata.appIcon = event.data.thumbnail;
+    video.metadata.name = event.data.name;
+    video.metadata.artifactUrl = event.data.url;
+
+      const playerModal = await this.modalCtrl.create({
+        component: ContentViewerComponent,
+        componentProps: {
+          playerConfig: video
+        }
+      });
+      await playerModal.present();
   }
 
 }

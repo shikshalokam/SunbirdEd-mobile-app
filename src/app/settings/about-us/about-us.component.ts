@@ -14,7 +14,7 @@ import {
   Environment,
   ImpressionType
 } from '../../../services';
-import { ContentType, AudienceFilter, RouterLinks, GenericAppConfig } from '../../app.constant';
+import { AudienceFilter, RouterLinks, GenericAppConfig, PrimaryCategory } from '../../app.constant';
 import { Router } from '@angular/router';
 import { Location } from '@angular/common';
 import { AppVersion } from '@ionic-native/app-version/ngx';
@@ -94,13 +94,13 @@ export class AboutUsComponent implements OnInit {
   }
 
   async shareInformation() {
-    this.generateInteractTelemetry(InteractType.TOUCH, InteractSubtype.SUPPORT_CLICKED);
+    this.generateInteractTelemetry(InteractType.TOUCH, InteractSubtype.SHARE_CLICKED);
     const allUserProfileRequest: GetAllProfileRequest = {
       local: true,
       server: true
     };
     const contentRequest: ContentRequest = {
-      contentTypes: ContentType.FOR_DOWNLOADED_TAB,
+      primaryCategories: PrimaryCategory.FOR_DOWNLOADED_TAB,
       audience: AudienceFilter.GUEST_TEACHER
     };
     const getUserCount = await this.profileService.getAllProfiles(allUserProfileRequest).pipe(
@@ -179,6 +179,7 @@ export class AboutUsComponent implements OnInit {
   }
 
   goBack() {
+    this.telemetryGeneratorService.generateBackClickedTelemetry(PageId.SETTINGS_ABOUT_US, Environment.SETTINGS, true);
     this.location.back();
   }
 
@@ -192,7 +193,7 @@ export class AboutUsComponent implements OnInit {
 
   async openTermsOfUse() {
     this.generateInteractTelemetry(InteractType.TOUCH, InteractSubtype.TERMS_OF_USE_CLICKED);
-    const baseUrl = await this.utilityService.getBuildConfigValue('BASE_URL');
+    const baseUrl = await this.utilityService.getBuildConfigValue('TOU_BASE_URL');
     const url = baseUrl + RouterLinks.TERM_OF_USE;
     const options
       = 'hardwareback=yes,clearcache=no,zoom=no,toolbar=yes,disallowoverscroll=yes';

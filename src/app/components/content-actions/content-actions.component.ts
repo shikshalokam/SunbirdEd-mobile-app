@@ -1,8 +1,9 @@
-import { TelemetryGeneratorService } from '../../../services/telemetry-generator.service';
+import { Component, Inject } from '@angular/core';
+import { FileSizePipe } from '@app/pipes/file-size/file-size';
+import { ContentUtil } from '@app/util/content-util';
+import { NavParams, PopoverController, ToastController } from '@ionic/angular';
+import { Events } from '@app/util/events';
 import { TranslateService } from '@ngx-translate/core';
-import { Events, PopoverController, NavParams } from '@ionic/angular';
-import { Platform, ToastController } from '@ionic/angular';
-import { Component, Inject, OnInit } from '@angular/core';
 import {
   AuthService,
   ContentDeleteResponse,
@@ -10,14 +11,14 @@ import {
   ContentService,
   CorrelationData,
   OAuthSession,
-  Rollup,
-  TelemetryObject
+  Rollup
 } from 'sunbird-sdk';
 import { CommonUtilService } from '../../../services/common-util.service';
 import { Environment, InteractSubtype, InteractType } from '../../../services/telemetry-constants';
+import { TelemetryGeneratorService } from '../../../services/telemetry-generator.service';
 import { SbPopoverComponent } from '../popups/sb-popover/sb-popover.component';
-import { FileSizePipe } from '@app/pipes/file-size/file-size';
-import { SbGenericPopoverComponent } from '../popups/sb-generic-popover/sb-generic-popover.component';
+import { PageId } from './../../../services/telemetry-constants';
+
 @Component({
   selector: 'app-content-actions',
   templateUrl: './content-actions.component.html',
@@ -26,6 +27,8 @@ import { SbGenericPopoverComponent } from '../popups/sb-generic-popover/sb-gener
 export class ContentActionsComponent {
 
   content: any;
+  chapter: any;
+  downloadIdentifiers: any;
   data: any;
   isChild = false;
   contentId: string;
@@ -34,17 +37,18 @@ export class ContentActionsComponent {
   userId = '';
   pageName = '';
   showFlagMenu = true;
+  showChapterActions = false;
   public objRollup: Rollup;
   private corRelationList: Array<CorrelationData>;
+  showUnenrolledButton = false;
 
   constructor(
     @Inject('CONTENT_SERVICE') private contentService: ContentService,
+    @Inject('AUTH_SERVICE') private authService: AuthService,
     private navParams: NavParams,
     private toastCtrl: ToastController,
-    @Inject('AUTH_SERVICE') private authService: AuthService,
     private events: Events,
     private translate: TranslateService,
-    private platform: Platform,
     private commonUtilService: CommonUtilService,
     private telemetryGeneratorService: TelemetryGeneratorService,
     private fileSizePipe: FileSizePipe,
@@ -56,17 +60,19 @@ export class ContentActionsComponent {
     this.pageName = this.navParams.get('pageName');
     this.objRollup = this.navParams.get('objRollup');
     this.corRelationList = this.navParams.get('corRelationList');
+    this.chapter = this.navParams.get('chapter');
+    this.downloadIdentifiers = this.navParams.get('downloadIdentifiers');
 
     if (this.navParams.get('isChild')) {
       this.isChild = true;
     }
+    if (this.pageName === PageId.CHAPTER_DETAILS) {
+      this.showChapterActions = true;
+    }
 
     this.contentId = (this.content && this.content.identifier) ? this.content.identifier : '';
-    this.backButtonFunc = this.platform.backButton.subscribeWithPriority(10, () => {
-      this.popOverCtrl.dismiss();
-      this.backButtonFunc.unsubscribe();
-    });
     this.getUserId();
+    this.isCourseCompleted();
   }
 
 
@@ -108,12 +114,9 @@ export class ContentActionsComponent {
           component: SbPopoverComponent,
           componentProps: {
             content: this.content,
-            // isChild: this.isDepthChild,
             objRollup: this.objRollup,
-            // pageName: PageId.COLLECTION_DETAIL,
             corRelationList: this.corRelationList,
             sbPopoverHeading: this.commonUtilService.translateMessage('REMOVE_FROM_DEVICE'),
-            // sbPopoverMainTitle: this.commonUtilService.translateMessage('REMOVE_FROM_DEVICE_MSG'),
             sbPopoverMainTitle: this.content.name,
             actionsButtons: [
               {
@@ -122,10 +125,7 @@ export class ContentActionsComponent {
               },
             ],
             icon: null,
-            metaInfo:
-              // this.contentDetail.contentTypesCount.TextBookUnit + 'items' +
-              // this.batchDetails.courseAdditionalInfo.leafNodesCount + 'items' +
-              '(' + this.fileSizePipe.transform(this.content.size, 2) + ')',
+            metaInfo: '(' + this.fileSizePipe.transform(this.content.size, 2) + ')',
             sbPopoverContent: 'Are you sure you want to delete ?'
           },
           cssClass: 'sb-popover danger',
@@ -140,7 +140,6 @@ export class ContentActionsComponent {
       }
       case 1: {
         this.popOverCtrl.dismiss();
-        // this.reportIssue();
         break;
       }
     }
@@ -149,29 +148,34 @@ export class ContentActionsComponent {
   /*
    * shows alert to confirm unenroll send back user selection */
   async unenroll() {
-    const telemetryObject = new TelemetryObject(this.content.identifier, this.content.contentType, this.content.pkgVersion);
     this.telemetryGeneratorService.generateInteractTelemetry(
       InteractType.TOUCH,
       InteractSubtype.UNENROL_CLICKED,
       Environment.HOME,
       this.pageName,
-      telemetryObject,
+      ContentUtil.getTelemetryObject(this.content),
       undefined,
       this.objRollup,
       this.corRelationList);
     this.popOverCtrl.dismiss({ unenroll: true });
-   
+  }
+
+  async download() {
+    this.popOverCtrl.dismiss({ download: true });
+  }
+
+  async share() {
+    this.popOverCtrl.dismiss({ share: true });
   }
 
   async deleteContent() {
-    const telemetryObject = new TelemetryObject(this.content.identifier, this.content.contentType, this.content.pkgVersion);
 
     this.telemetryGeneratorService.generateInteractTelemetry(
       InteractType.TOUCH,
       InteractSubtype.DELETE_CLICKED,
       Environment.HOME,
       this.pageName,
-      telemetryObject,
+      ContentUtil.getTelemetryObject(this.content),
       undefined,
       this.objRollup,
       this.corRelationList);
@@ -200,6 +204,20 @@ export class ContentActionsComponent {
       });
   }
 
+  async syncCourseProgress() {
+
+    this.telemetryGeneratorService.generateInteractTelemetry(
+      InteractType.TOUCH,
+      InteractSubtype.SYNC_PROGRESS_CLICKED,
+      Environment.HOME,
+      this.pageName,
+      ContentUtil.getTelemetryObject(this.content),
+      undefined,
+      this.objRollup,
+      this.corRelationList);
+    this.popOverCtrl.dismiss({ syncProgress: true });
+  }
+
 
   async showToaster(message) {
     const toast = await this.toastCtrl.create({
@@ -219,16 +237,13 @@ export class ContentActionsComponent {
     );
     return msg;
   }
-  // check wheather to show Unenroll button in overflow menu or not
-  showUnenrollButton(): boolean {
-    return (this.data &&
-      (this.data.batchStatus !== 2 &&
-        (this.data.contentStatus === 0 || this.data.contentStatus === 1 || this.data.courseProgress < 100) &&
-        this.data.enrollmentType !== 'invite-only'));
-  }
 
-
-  private isObjectEmpty(obj) {
-    return Object.keys(obj).length === 0 && obj.constructor === Object;
+  private isCourseCompleted() {
+    if (this.content && this.content.progress === 100) {
+      if (this.batchDetails && ((this.batchDetails.endDate &&
+        (new Date(this.batchDetails.endDate) >= new Date())) || !this.batchDetails.endDate)) {
+          this.showUnenrolledButton = true;
+      }
+    }
   }
 }

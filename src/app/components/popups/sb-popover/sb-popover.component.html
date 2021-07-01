@@ -1,12 +1,12 @@
 <ion-header class="sb-popover-header">
   <ion-toolbar class="sb-popover-toolbar">
     <ion-title class="sb-popover-title">{{sbPopoverHeading}}
-      <ion-icon name="close" class="sb-modal-close" (click)="closePopover(true)"></ion-icon>
+      <ion-icon *ngIf="showCloseBtn" name="close" class="sb-modal-close" (click)="closePopover(true)"></ion-icon>
     </ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content no-padding class="sb-popover-container">
+<ion-content class="sb-popover-container ion-no-padding">
   <div class="sb-popover-items">
     <div class="icon-container" *ngIf="icon">
       <ion-icon ios="{{icon?.ios}}" md="{{icon?.md}}"></ion-icon>
@@ -15,7 +15,7 @@
       <img [src]=img alt="" />
     </div>
 
-    <div class="sb-popover-content-details" *ngIf="sbPopoverMainTitle || metaInfo || sbPopoverContent || sbPopoverHtmlContent">
+    <div class="sb-popover-content-details" *ngIf="sbPopoverMainTitle || metaInfo || sbPopoverContent || sbPopoverHtmlContent || sbPopoverInfo">
       <div class="main-title">
         {{sbPopoverMainTitle}}
         <div class="meta-info">
@@ -26,6 +26,9 @@
         {{sbPopoverContent}}
       </div>
       <div *ngIf="sbPopoverHtmlContent" [innerHTML]="sbPopoverHtmlContent">
+      </div>
+      <div class="sb-popover-information" *ngIf="sbPopoverInfo">
+        {{sbPopoverInfo}}
       </div>
     </div>
   </div>

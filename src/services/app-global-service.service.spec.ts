@@ -1,11 +1,12 @@
 import { AppGlobalService } from './app-global-service.service';
 import { ProfileService, AuthService, FrameworkService, SharedPreferences, ProfileType } from 'sunbird-sdk';
-import { Events, PopoverController } from '@ionic/angular';
+import { PopoverController } from '@ionic/angular';
+import { Events } from '@app/util/events';
 import { TelemetryGeneratorService } from './telemetry-generator.service';
 import { UtilityService } from './utility-service';
 import { of, throwError } from 'rxjs';
 import { PreferenceKey, EventTopics } from '../app/app.constant';
-import { InteractSubtype, Environment, PageId, InteractType } from './telemetry-constants';
+import { InteractSubtype, Environment, PageId, InteractType, ImpressionType, ImpressionSubtype } from './telemetry-constants';
 import { AppVersion } from '@ionic-native/app-version/ngx';
 import { mockFrameworkData } from './app-global-service.service.spec.data';
 import { UpgradePopoverComponent } from '@app/app/components/popups';
@@ -52,7 +53,8 @@ describe('AppGlobalService', () => {
             mockPopoverCtrl as PopoverController,
             mockTelemetryGeneratorService as TelemetryGeneratorService,
             mockUtilityService as UtilityService,
-            mockAppVersion as AppVersion
+            mockAppVersion as AppVersion,
+            mockPopoverCtrl as PopoverController
         );
     });
 
@@ -520,7 +522,7 @@ describe('AppGlobalService', () => {
             // act
             appGlobalService.setOnBoardingCompleted().then(() => {
                 // assert
-                expect(appGlobalService.isOnBoardingCompleted).toEqual(true);
+                expect(appGlobalService.isOnBoardingCompleted).toEqual(false);
             });
         });
 
@@ -535,12 +537,12 @@ describe('AppGlobalService', () => {
         });
     });
 
-    describe('showCouchMarkScreen()', () => {
-        it('should skip showig coachmark screen if "skipCoachScreenForDeeplink" is true', () => {
+    describe('showTutorialWalkthrough()', () => {
+        it('should skip showing tutorialScreen screen if "skipCoachScreenForDeeplink" is true', () => {
             // arrange
             appGlobalService.skipCoachScreenForDeeplink = true;
             // act
-            appGlobalService.showCouchMarkScreen().then(() => {
+            appGlobalService.showTutorialScreen().then(() => {
                 // assert
                 expect(appGlobalService.skipCoachScreenForDeeplink).toEqual(false);
             });
@@ -551,17 +553,41 @@ describe('AppGlobalService', () => {
             appGlobalService.skipCoachScreenForDeeplink = false;
             mockPreferences.getBoolean = jest.fn(() => of(false));
             mockAppVersion.getAppName = jest.fn(() => Promise.resolve('appname'));
-            mockEvent.publish = jest.fn();
-            mockTelemetryGeneratorService.generateImpressionTelemetry = jest.fn();
             mockPreferences.putBoolean = jest.fn(() => of(undefined));
+            mockPopoverCtrl.create = jest.fn(() => (Promise.resolve({
+                present: jest.fn(() => Promise.resolve({})),
+                onDidDismiss: jest.fn(() => Promise.resolve({ data: { continueClicked: false } }))
+            } as any)));
             // act
-            appGlobalService.showCouchMarkScreen().then(() => {
+            appGlobalService.showTutorialScreen().then(() => {
                 // assert
-                expect(mockEvent.publish).toHaveBeenCalledWith(EventTopics.COACH_MARK_SEEN,
-                    { showWalkthroughBackDrop: true, appName: 'appname' });
-                expect(mockTelemetryGeneratorService.generateImpressionTelemetry).toHaveBeenCalled();
+                setTimeout(() => {
+                    expect(mockPopoverCtrl.create).toHaveBeenCalled();
+                    done();
+
+                }, 0);
                 expect(mockPreferences.putBoolean).toHaveBeenCalledWith(PreferenceKey.COACH_MARK_SEEN, true);
-                done();
+            });
+        });
+
+        it('should generate close clicked after user sees the walkthrough screen', (done) => {
+            // arrange
+            appGlobalService.skipCoachScreenForDeeplink = false;
+            mockPreferences.getBoolean = jest.fn(() => of(false));
+            mockAppVersion.getAppName = jest.fn(() => Promise.resolve('appname'));
+            mockPreferences.putBoolean = jest.fn(() => of(undefined));
+            mockPopoverCtrl.create = jest.fn(() => (Promise.resolve({
+                present: jest.fn(() => Promise.resolve({})),
+                onDidDismiss: jest.fn(() => Promise.resolve({ data: { continueClicked: true } }))
+            } as any)));
+            // act
+            appGlobalService.showTutorialScreen().then(() => {
+                // assert
+                setTimeout(() => {
+                    expect(mockPopoverCtrl.create).toHaveBeenCalled();
+                    done();
+                }, 0);
+                expect(mockPreferences.putBoolean).toHaveBeenCalledWith(PreferenceKey.COACH_MARK_SEEN, true);
             });
         });
 
@@ -570,7 +596,7 @@ describe('AppGlobalService', () => {
             appGlobalService.skipCoachScreenForDeeplink = false;
             mockPreferences.getBoolean = jest.fn(() => of(true));
             // act
-            appGlobalService.showCouchMarkScreen().then(() => {
+            appGlobalService.showTutorialScreen().then(() => {
                 // assert
                 done();
             });
@@ -647,13 +673,13 @@ describe('AppGlobalService', () => {
         });
     });
 
-    describe('DialCodeConfig()', () => {
+    describe('SupportedUrlRegexConfig()', () => {
         it('should return cached location config', () => {
             // arrange
-            appGlobalService.setDailCodeConfig(new RegExp('sample_regex'));
+            appGlobalService.setSupportedUrlRegexConfig('sample_regex');
             // act
             // assert
-            expect(appGlobalService.getCachedDialCodeConfig()).toEqual(new RegExp('sample_regex'));
+            expect(appGlobalService.getCachedSupportedUrlRegexConfig()).toEqual('sample_regex');
         });
     });
 
@@ -693,6 +719,30 @@ describe('AppGlobalService', () => {
             // act
             // assert
             expect(appGlobalService.getUserId()).toEqual('0123456789');
+        });
+    });
+
+    describe('setpdfPlayerConfiguration()', () => {
+        it('should set pdf player Config', () => {
+            appGlobalService.setpdfPlayerconfiguration(true);
+            expect(appGlobalService.pdfPlayerConfiguratiion).toEqual(true);
+        });
+    });
+
+    describe('getPdfPlayerConfiguration()', () => {
+        it('should return pdf player config', () => {
+            appGlobalService.getPdfPlayerConfiguration();
+            expect(appGlobalService.pdfPlayerConfiguratiion).toBeTruthy();
+        });
+    });
+
+    describe('RootOrganizations()', () => {
+        it('should return cached location config', () => {
+            // arrange
+            appGlobalService.setRootOrganizations([]);
+            // act
+            // assert
+            expect(appGlobalService.getCachedRootOrganizations()).toEqual([]);
         });
     });
 
@@ -856,11 +906,11 @@ describe('AppGlobalService', () => {
         it('should show force upgrade popup with shouldDismissAlert as false if type is force', () => {
             // arrange
             // act
-            appGlobalService.openPopover({type: 'force'});
+            appGlobalService.openPopover({ type: 'force' });
             // assert
             expect(mockPopoverCtrl.create).toHaveBeenCalledWith({
                 component: UpgradePopoverComponent,
-                componentProps: { upgrade: {type: 'force'} },
+                componentProps: { upgrade: { type: 'force' } },
                 cssClass: 'upgradePopover',
                 showBackdrop: true,
                 backdropDismiss: false
@@ -870,11 +920,11 @@ describe('AppGlobalService', () => {
         it('should show force upgrade popup with shouldDismissAlert as false if type is forced', () => {
             // arrange
             // act
-            appGlobalService.openPopover({type: 'forced'});
+            appGlobalService.openPopover({ type: 'forced' });
             // assert
             expect(mockPopoverCtrl.create).toHaveBeenCalledWith({
                 component: UpgradePopoverComponent,
-                componentProps: { upgrade: {type: 'forced'} },
+                componentProps: { upgrade: { type: 'forced' } },
                 cssClass: 'upgradePopover',
                 showBackdrop: true,
                 backdropDismiss: false
@@ -884,15 +934,64 @@ describe('AppGlobalService', () => {
         it('should show force upgrade popup with shouldDismissAlert as true if type is optional', () => {
             // arrange
             // act
-            appGlobalService.openPopover({type: 'optional'});
+            appGlobalService.openPopover({ type: 'optional' });
             // assert
             expect(mockPopoverCtrl.create).toHaveBeenCalledWith({
                 component: UpgradePopoverComponent,
-                componentProps: { upgrade: {type: 'optional'} },
+                componentProps: { upgrade: { type: 'optional' } },
                 cssClass: 'upgradePopover',
                 showBackdrop: true,
                 backdropDismiss: true
             });
         });
+    });
+
+    describe('isNativePopupVisible', () => {
+        it('should return the isNativePopupVisible', () => {
+            // arrange
+            appGlobalService.isNativePopupVisible = true;
+
+            // act
+            // assert
+            expect(appGlobalService.isNativePopupVisible).toBeTruthy();
+
+        });
+    });
+
+    describe('isNativePopupVisible', () => {
+        it('should return the isNativePopupVisible', () => {
+            // arrange
+            appGlobalService.isNativePopupVisible = true;
+
+            // act
+            // assert
+            expect(appGlobalService.isNativePopupVisible).toBeTruthy();
+
+        });
+    });
+
+    describe('setNativePopupVisible', () => {
+        it('should setNativePopupVisible property to false', () => {
+            // arrange
+            // act
+            appGlobalService.setNativePopupVisible(false);
+            // assert
+            expect(appGlobalService.isNativePopupVisible).toBeFalsy();
+
+        });
+
+        it('should setNativePopupVisible property to true', () => {
+            // arrange
+            jest.useFakeTimers();
+            // act
+            appGlobalService.setNativePopupVisible(true, 1);
+            // assert
+            jest.advanceTimersByTime(20);
+            expect(appGlobalService.isNativePopupVisible).toBeTruthy();
+            jest.useRealTimers();
+            jest.clearAllTimers();
+
+        });
+
     });
 });
