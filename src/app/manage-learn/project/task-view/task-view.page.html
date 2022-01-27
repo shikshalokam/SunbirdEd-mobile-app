@@ -1,7 +1,7 @@
 <ion-content *ngIf="task" class="ion-padding background-theme-color">
-  <div class="heading-name" (click)="edit('task',task?.name)">
+  <div class="heading-name" (click)="task?.isDeletable && edit('task',task?.name)">
    <h4 *ngIf="editField != 'name'">{{task?.name}}</h4>
-    <ion-icon name="create" color="primary" class="iconAdj"> </ion-icon>
+    <ion-icon *ngIf="task.isDeletable" name="create" color="primary" class="iconAdj"> </ion-icon>
   </div>
 
   <ion-row>
@@ -59,7 +59,7 @@
           {{subtask.name}}
         </ion-col>
         <ion-col size="1" style="margin: auto; text-align: center">
-          <img src="assets/imgs/Delete.png" class="filter-icon" style="width: 20px" (click)="askPermissionToDelete(subtask,'subtask')" />
+          <img *ngIf="task.isDeletable" src="assets/imgs/Delete.png" class="filter-icon" style="width: 20px" (click)="askPermissionToDelete(subtask,'subtask')" />
         </ion-col>
       </ion-row>
       <ion-row>
