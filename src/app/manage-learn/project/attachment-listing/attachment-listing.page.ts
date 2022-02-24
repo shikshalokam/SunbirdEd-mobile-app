@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { AppHeaderService } from '@app/services';
 import { DbService } from '../../core/services/db.service';
-import { Platform } from "@ionic/angular";
+import { AlertController, Platform } from "@ionic/angular";
 import { File } from "@ionic-native/file/ngx";
 import { DomSanitizer } from "@angular/platform-browser";
 import { Subscription } from 'rxjs';
@@ -11,7 +11,7 @@ import { FileTransfer, FileTransferObject } from '@ionic-native/file-transfer/ng
 import { FileOpener } from '@ionic-native/file-opener/ngx';
 import { PhotoViewer } from '@ionic-native/photo-viewer/ngx';
 import { ActivatedRoute } from '@angular/router';
-import { UtilsService } from '../../core';
+import { ProjectService, UtilsService } from '../../core';
 
 @Component({
   selector: 'app-attachment-listing',
@@ -47,7 +47,9 @@ export class AttachmentListingPage implements OnInit {
     public fileOpener: FileOpener,
     private photoViewer: PhotoViewer,
     private routeParam: ActivatedRoute,
-    private util: UtilsService
+    private util: UtilsService,
+    private projectService: ProjectService,
+    private alertController: AlertController
   ) {
     routeParam.params.subscribe(parameters => {
       this.projectId = parameters.id;
@@ -124,5 +126,40 @@ export class AttachmentListingPage implements OnInit {
     this.fileOpener.open(this.path + '/' + attachment.name, attachment.type)
       .then(() => { console.log('File is opened'); })
       .catch(e => console.log('Error opening file', e));
+  }
+  
+  async removeImage(task, type, index){
+    let texts: any;
+    this.translate.get(['FRMELEMNTS_LBL_DELETE_ATTACHMENT', 'FRMELEMNTS_LBL_YES', 'FRMELEMNTS_LBL_NO']).subscribe(text => {
+      texts = text;
+    })
+    const alert = await this.alertController.create({
+      message: texts['FRMELEMNTS_LBL_DELETE_ATTACHMENT'],
+      buttons: [
+        {
+          text: texts['FRMELEMNTS_LBL_YES'],
+          role: texts['FRMELEMNTS_LBL_YES'],
+          handler: async () => {
+            this.attachments = await this.removeImageFromAttachments(task, index)
+          }
+        },
+        {
+          text: texts['FRMELEMNTS_LBL_NO'],
+          role: texts['FRMELEMNTS_LBL_NO'],
+        }
+      ]
+    });
+
+    await alert.present();
+  }
+  removeImageFromAttachments(task, index): any {
+    let newArray = this.attachments.map(obj => {
+      if (obj === task) {
+        obj.attachments.splice(index, 1)
+        return obj
+      }
+      return obj;
+    })
+    return newArray;
   }
 }

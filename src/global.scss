@@ -210,3 +210,20 @@ sunbird-pdf-player .sunbird-pdf-palyer-container pdf-viewer iframe{
 .ion-text-none{
   text-transform: none;
 }
+
+.alert-button-group.sc-ion-alert-md{
+  display: flex !important;
+  justify-content: space-evenly !important;
+  margin-bottom: 10px !important;
+}
+.alert-wrapper.sc-ion-alert-md{
+  border-radius: 8px !important;
+  width: 90% !important;
+}
+.alert-button.sc-ion-alert-md{
+  width: 40% !important;
+  margin: 0 !important;
+}
+.alert-button-inner.sc-ion-alert-md {
+  justify-content: center !important;
+}

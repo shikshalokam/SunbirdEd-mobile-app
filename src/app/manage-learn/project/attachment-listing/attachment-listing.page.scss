@@ -1,7 +1,7 @@
 @import "../../../../assets/styles/variables";
 @import "../../../../assets/styles/base/variables";
 .attachments-card{
-    border-radius: 16px;
+    border-radius: 8px !important;
     background: $white-color;
    ion-card-header{
     font-size: 16px;
@@ -43,4 +43,10 @@ img{
  }
  .img-wrapper{
     margin-top: 4px;
+ }
+ .img-card{
+    border-radius: 3px !important;
+ }
+ .no-border{
+    border-bottom: 0 !important;
  }

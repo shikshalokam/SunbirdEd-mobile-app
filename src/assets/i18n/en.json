@@ -1511,5 +1511,6 @@
   "FRMELEMENTS_MSG_PROJECT_ALREADY_SYNCED" :"Your project has been completed and synced, no further syncs are allowed to this project",
   "FRMELEMNTS_LBL_LINKS": "Links",
   "FRMELEMNTS_LBL_TASK_LEVEL": "Task level",
-  "FRMELEMNTS_LBL_EVIDENCE": "evidence"
+  "FRMELEMNTS_LBL_EVIDENCE": "evidence",
+  "FRMELEMNTS_LBL_DELETE_ATTACHMENT":"Are you sure you want to delete image?"
 }

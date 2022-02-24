@@ -14,19 +14,21 @@
   <div *ngIf="attachments?.length">
     <div [ngSwitch]="type">
       <div *ngSwitchCase="'images'">
-        <div *ngFor="let task of attachments">
+        <div *ngFor="let task of attachments; let more = false">
           <ion-card class="attachments-card" *ngIf="task?.attachments?.length">
             <ion-card-header class="project-card _capitalize">
-              {{task.taskName | titlecase}}
+              {{task.name | titlecase}}
             </ion-card-header>
             <ion-card-content>
               <ion-row>
                 <ion-col size="6" *ngIf="task?.remarks">
                   {{task.remarks}}
                 </ion-col>
-                <ion-col size="6" class="img-wrapper" *ngFor="let attachment of task.attachments; let i=index;">
-                  <ion-card>
-                    <div><ion-icon class="close-icon" name="close-circle"></ion-icon></div>
+                <ion-col size="6" class="img-wrapper" *ngFor="let attachment of task.attachments | slice:0:(more ? undefined : 2); let i=index;">
+                  <ion-card class="img-card">
+                    <ion-card-header class="no-border">
+                      <ion-icon class="close-icon" name="close-circle" (click)="removeImage(task, type, i)"></ion-icon>
+                    </ion-card-header>
                     <ion-card-content>
                       <img [src]="getImgContent(attachment?.localUrl)"
                         *ngIf="attachment.type.includes('image') && !attachment.url" />
@@ -38,8 +40,8 @@
               </ion-row>
             </ion-card-content>
             <div class="button-flex-div">
-              <ion-button class="view-more" expand="block" fill="outline" (click)="loadMore()"
-                *ngIf="task?.attachments?.length>2">
+              <ion-button class="view-more" expand="block" fill="outline" (click)="more=!more"
+              *ngIf="task?.attachments?.length>2 && !more">
                 {{ 'FRMELEMNTS_BTN_LOAD_MORE_PROJECTS' | translate | uppercase }}
               </ion-button>
             </div>
