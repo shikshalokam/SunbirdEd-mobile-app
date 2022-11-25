@@ -521,14 +521,14 @@ export class UtilsService {
           ? this.requiredFields + " in"
           : ""
         }   your profile to access the feature.`,
+        cssClass:'central-alert',
       buttons: [
         {
-          text: "Update Profile",
+          text: "Update profile",
           role: "cancel",
           handler: blah => {
-            this.router.navigate([
-              `/${RouterLinks.TABS}/${RouterLinks.PROFILE}`
-            ]);
+            this.router.navigate([`${RouterLinks.HOME}`], {replaceUrl:true});
+            this.router.navigate([`${RouterLinks.TABS}/${RouterLinks.PROFILE}`]);
           }
         }
       ],
@@ -744,6 +744,11 @@ return data;
         type: 'image/jpeg'
       },
       {
+        name: "FRMELEMNTS_LBL_VIDEOS",
+        value: "video",
+        type: "video/mp4"
+      },
+      {
         name: "FRMELEMNTS_LBL_FILES",
         value: "file",
         type: "application/pdf"
@@ -753,6 +758,7 @@ return data;
         value: "link",
         type: "link"
       },
+     
     ];
     return tabs;
   }

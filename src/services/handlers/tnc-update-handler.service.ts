@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@angular/core';
 import { NavigationExtras, Router } from '@angular/router';
-import { OnboardingScreenType, PreferenceKey, ProfileConstants, RouterLinks } from '@app/app/app.constant';
+import { ProfileConstants, RouterLinks } from '@app/app/app.constant';
 import { FieldConfig } from '@app/app/components/common-forms/field-config';
 import { FormConstants } from '@app/app/form.constants';
 import { TermsAndConditionsPage } from '@app/app/terms-and-conditions/terms-and-conditions.page';
@@ -8,7 +8,7 @@ import { ModalController } from '@ionic/angular';
 import {
   AuthService,
   CachedItemRequestSourceFrom, Profile, ProfileService,
-  ProfileType, ServerProfile, ServerProfileDetailsRequest, SharedPreferences
+  ProfileType, ServerProfile, ServerProfileDetailsRequest
 } from 'sunbird-sdk';
 import { AppGlobalService } from '../app-global-service.service';
 import { CommonUtilService } from '../common-util.service';
@@ -51,12 +51,13 @@ export class TncUpdateHandlerService {
       from: CachedItemRequestSourceFrom.SERVER
     };
     this.profileService.getServerProfilesDetails(request).toPromise()
-      .then((profile) => {
+      .then(async (profile) => {
         if (this.hasProfileTncUpdated(profile)) {
           this.presentTncPage({ profile });
         } else {
-          if (!profile.dob) {
-            this.router.navigate([RouterLinks.SIGNUP_BASIC]);
+          const userDetails = await this.profileService.getActiveSessionProfile({ requiredFields: ProfileConstants.REQUIRED_FIELDS }).toPromise();
+          if (!profile.managedBy && !await this.isSSOUser(userDetails) && !profile.dob) {
+              this.router.navigate([RouterLinks.SIGNUP_BASIC]);
           } else {
             this.checkBmc(profile);
           }
@@ -96,7 +97,7 @@ export class TncUpdateHandlerService {
        (userDetails.profileType === ProfileType.OTHER.toUpperCase() &&
         userDetails.serverProfile.profileUserType.type === ProfileType.OTHER.toUpperCase())
         || userDetails.serverProfile.profileUserType.type === ProfileType.OTHER.toUpperCase())) {
-      if (onboarding.skipOnboardingForLoginUser) {
+      if (onboarding.skipOnboardingForLoginUser && userDetails.profileType !== ProfileType.ADMIN) {
         await this.updateUserAsGuest();
       } else {
         this.preRequirementToBmcNavigation(profile.userId, locationMappingConfig);

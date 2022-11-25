@@ -20,6 +20,7 @@ import { TranslateService } from "@ngx-translate/core";
 import { ObservationService } from "../observation.service";
 import { storageKeys } from "../../storageKeys";
 import { Subscription } from "rxjs";
+import { EntitySearchLocalComponent } from "../../shared";
 
 @Component({
   selector: "app-observation-detail",
@@ -33,6 +34,7 @@ export class ObservationDetailComponent implements OnInit {
     actionButtons: []
   };
   observationId: any;
+  disableAddEntity : boolean = true;
   solutionId: any;
   programId: any;
   submissionCount: any;
@@ -44,6 +46,7 @@ export class ObservationDetailComponent implements OnInit {
   generatedKey;
   private _networkSubscription?: Subscription;
   networkFlag;
+  searchQuery : string;
   constructor(
     private headerService: AppHeaderService,
     private router: Router,
@@ -65,6 +68,7 @@ export class ObservationDetailComponent implements OnInit {
       this.solutionId = params.solutionId;
       this.programId = params.programId;
       this.solutionName = params.solutionName;
+      this.entityType =params.entityType;
       let parameters = {
         solutionId: this.solutionId,
         programId: this.programId,
@@ -116,6 +120,7 @@ export class ObservationDetailComponent implements OnInit {
         success => {
           this.loader.stopLoader();
           if (success && success.result && success.result.entities) {
+            this.disableAddEntity = false;
             this.solutionData = success.result;
             this.entities = success.result.entities;
             this.entityType = success.result.entityType;
@@ -125,6 +130,7 @@ export class ObservationDetailComponent implements OnInit {
             this.localStorage.setLocalStorage(this.generatedKey,success.result);
 
           } else {
+            this.disableAddEntity = true;
             this.entities = [];
             if (!this.observationId) {
               this.observationId = success.result._id; // for autotargeted if get observationId
@@ -173,51 +179,78 @@ export class ObservationDetailComponent implements OnInit {
 
   async addEntity() {
     if(this.networkFlag){
-      const type = this.entityType;
       let entityListModal;
       entityListModal = await this.modalCtrl.create({
         component: EntityfilterComponent,
         componentProps: {
           data: this.observationId,
-          solutionId: this.solutionId
+          solutionId: this.solutionId,
+          entity : this.entityType
         }
       });
       await entityListModal.present();
       await entityListModal.onDidDismiss().then(async entityList => {
         if (entityList.data) {
-          let payload = await this.utils.getProfileInfo();
-  
-          payload.data = [];
-          entityList.data.forEach(element => {
-            //if coming from state list page
-            if (type == "state") {
-              element.selected ? payload.data.push(element._id) : null;
-              return;
-            }
-  
-            payload.data.push(element._id); // if coming from EntityListPage
-          });
-  
-          const config = {
-            url:
-              urlConstants.API_URLS.OBSERVATION_UPDATE_ENTITES +
-              `${this.observationId}`,
-            payload: payload
-          };
-          this.assessmentService.post(config).subscribe(
-            success => {
-              if (success) {
-                this.getObservationEntities();
-              }
-            },
-            error => {}
-          );
+          this.setPayloadAndPostAssessment(entityList);
         }
       });
     }else{
       this.toast.showMessage('FRMELEMENTS_MSG_FEATURE_USING_OFFLINE', 'danger');
     }
   }
+  
+  async localSearch(){
+    let entityListModal;
+    entityListModal = await this.modalCtrl.create({
+      component: EntitySearchLocalComponent,
+      componentProps: {
+        data: { entities : this.entities, entityType : this.entityType}
+      }
+    });
+    await entityListModal.present();
+    await entityListModal.onDidDismiss().then(async entityList => {
+      switch (entityList.data && entityList.data.action) {
+        case "onClick":
+          this.entityClickAction(entityList.data.entity);
+          return;
+        case "addEntity":
+          this.addEntity();
+          return;
+        case "remove":
+          this.removeEntity(entityList.data.entity);
+          return;
+      }
+    });
+  }
+  async setPayloadAndPostAssessment(entityList) {
+    const type = this.entityType;
+    let payload = await this.utils.getProfileInfo();
+    payload.data = [];
+    entityList.data.forEach(element => {
+      //if coming from state list page
+      if (type == "state" && element.selected) {
+          payload.data.push(element._id);
+        return;
+      }
+      payload.data.push(element._id); // if coming from EntityListPage
+    });
+
+    const config = {
+      url:
+        urlConstants.API_URLS.OBSERVATION_UPDATE_ENTITES +
+        `${this.observationId}`,
+      payload: payload
+    };
+    this.assessmentService.post(config).subscribe(
+      success => {
+        if (success) {
+          this.getObservationEntities();
+        }
+      },
+      error => {}
+    );
+  }
+  
   async removeEntity(entity) {
     let entityId = entity._id;
     let translateObject;
@@ -234,6 +267,7 @@ export class ObservationDetailComponent implements OnInit {
     let alert = await this.alertCntrl.create({
       header: translateObject["FRMELEMNTS_LBL_CONFIRM"],
       message: translateObject["FRMELEMNTS_LBL_DELETE_ENTITY"],
+      cssClass: 'central-alert',
       buttons: [
         {
           text: translateObject["FRMELEMNTS_LBL_NO"],
@@ -260,10 +294,6 @@ export class ObservationDetailComponent implements OnInit {
     };
     this.assessmentService.delete(config).subscribe(
       success => {
-        let okMessage;
-        this.translate.get("FRMELEMNTS_LBL_OK").subscribe(translations => {
-          okMessage = translations;
-        });
         this.toast.openToast(success.message);
 
         this.loader.stopLoader();
