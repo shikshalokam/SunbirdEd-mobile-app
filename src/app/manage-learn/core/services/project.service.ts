@@ -425,12 +425,19 @@ export class ProjectService {
   }
 
   getLinks(links) {
-    let link = {
-      name: links,
-      type: 'link',
-      isUploaded: false,
-      url: "",
-    };
-    return links ? link : links;
+    let formattedLinks = links.replace(/[ ]/g, ',').split(',');
+    let linkArray = [];
+    formattedLinks.forEach(element => {
+      if(element){
+        let link = {
+          name: element,
+          type: 'link',
+          isUploaded: false,
+          url: "",
+        };
+        linkArray.push(link);
+      }
+    });
+    return linkArray.length ? linkArray : links;
   }
 }

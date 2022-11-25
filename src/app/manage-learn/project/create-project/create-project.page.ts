@@ -152,8 +152,7 @@ export class CreateProjectPage implements OnInit {
         if (res.field != 'categories') {
           if (res.validation) {
             if (res.validation.required) {
-              res.validation.name = 'required';
-               validationsArray.push(Validators.required);
+              (res.validation.name = 'required'), validationsArray.push(Validators.required);
             }
             controls[res.field] = new FormControl(this.project ? this.project[res.field] : '', validationsArray);
           }
@@ -163,8 +162,7 @@ export class CreateProjectPage implements OnInit {
           res.taskData.forEach((element) => {
             if (element.validation) {
               if (element.validation.required) {
-                 element.validation.name = 'required';
-                 validationsArray.push(Validators.required); 
+                (element.validation.name = 'required'), validationsArray.push(Validators.required);
               }
               controls[element.field] = new FormControl('', validationsArray);
             }
@@ -204,7 +202,6 @@ export class CreateProjectPage implements OnInit {
       cssClass: 'central-alert',
       header: text[translateText.header],
       message: text[translateText.message],
-      backdropDismiss:false,
       buttons: [
         {
           text: text[translateText.yes],

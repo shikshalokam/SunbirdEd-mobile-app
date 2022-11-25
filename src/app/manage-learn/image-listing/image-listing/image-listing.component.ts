@@ -179,7 +179,7 @@ export class ImageListingComponent implements OnInit {
   }
 
   cloudImageUpload() {
-    const options: FileUploadOptions = {
+    var options: FileUploadOptions = {
       fileKey: this.imageList[this.uploadIndex].file,
       fileName: this.imageList[this.uploadIndex].file,
       chunkedMode: false,
@@ -279,6 +279,10 @@ export class ImageListingComponent implements OnInit {
         }
         this.schoolData['assessment']['evidences'][this.selectedEvidenceIndex].isSubmitted = true;
         this.localStorage.setLocalStorage(this.utils.getAssessmentLocalStorageKey(this.submissionId), this.schoolData);
+        const options = {
+          _id: this.submissionId,
+          name: this.schoolName,
+        };
         this.loader.stopLoader();
         history.go(-2);
       },
@@ -400,6 +404,7 @@ export class ImageListingComponent implements OnInit {
 
   constructMatrixObject(question) {
     const value = [];
+    const currentEvidence = this.currentEvidence;
 
     for (const instance of question.value) {
       let eachInstance = {};

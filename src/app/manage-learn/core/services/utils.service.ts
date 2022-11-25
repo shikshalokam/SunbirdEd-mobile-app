@@ -349,8 +349,7 @@ export class UtilsService {
     if (
       question.validation.required &&
       question.value === "" &&
-      question.responseType !== "multiselect" &&
-      question.responseType !== 'matrix'
+      question.responseType !== "multiselect"
     ) {
       return false;
     }
@@ -361,12 +360,6 @@ export class UtilsService {
       question.responseType === "multiselect"
     ) {
       return false;
-    }
-    if (
-      question.validation.required &&
-      question.responseType === 'matrix'
-    ) {
-      return this.isMatrixQuestionComplete(question);
     }
     if (
       question.validation.regex &&

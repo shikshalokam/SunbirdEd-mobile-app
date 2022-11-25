@@ -46,10 +46,7 @@ import {
   GenerateOtpRequest,
   CertificateService,
   CSGetLearnerCerificateRequest,
-  CsLearnerCertificate,
-  Framework,
-  FrameworkCategoryCodesGroup,
-  FrameworkDetailsRequest
+  CsLearnerCertificate
 } from 'sunbird-sdk';
 import { Environment, InteractSubtype, InteractType, PageId, ID } from '@app/services/telemetry-constants';
 import { Router } from '@angular/router';
@@ -79,8 +76,7 @@ import { FormConstants } from '../form.constants';
 import { ProfileHandler } from '@app/services/profile-handler';
 import { SegmentationTagService, TagPrefixConstants } from '@app/services/segmentation-tag/segmentation-tag.service';
 import { OrganizationSearchCriteria } from '@project-sunbird/sunbird-sdk';
-import { FrameworkCategory } from '@project-sunbird/client-services/models/channel';
-import { LocationHandler } from '@app/services/location-handler';
+
 @Component({
   selector: 'app-profile',
   templateUrl: './profile.page.html',
@@ -88,7 +84,6 @@ import { LocationHandler } from '@app/services/location-handler';
   providers: [CertificateDownloadAsPdfService]
 })
 export class ProfilePage implements OnInit {
-  private frameworkCategoriesMap: { [code: string]: FrameworkCategory | undefined } = {};
 
   @ViewChild('refresher', { static: false }) refresher: IonRefresher;
 
@@ -106,10 +101,6 @@ export class ProfilePage implements OnInit {
   roles = [];
   userLocation = {};
   appName = '';
-  boardList = [];
-  mediumList = [];
-  gradeLevelList = [];
-  subjectList = [];
 
   imageUri = 'assets/imgs/ic_profile_default.png';
 
@@ -180,8 +171,7 @@ export class ProfilePage implements OnInit {
     private certificateDownloadAsPdfService: CertificateDownloadAsPdfService,
     private profileHandler: ProfileHandler,
     private segmentationTagService: SegmentationTagService,
-    private platform: Platform,
-    private locationHandler: LocationHandler
+    private platform: Platform
   ) {
     const extrasState = this.router.getCurrentNavigation().extras.state;
     if (extrasState) {
@@ -333,7 +323,7 @@ export class ProfilePage implements OnInit {
                     && that.profile.profileUserType.type === ProfileType.OTHER.toUpperCase())) ? '' : that.profile.profileUserType.type;
                 that.profile['persona'] =  await that.profileHandler.getPersonaConfig(role.toLowerCase());
                 that.userLocation = that.commonUtilService.getUserLocation(that.profile);
-
+                
                 that.profile['subPersona'] = await that.profileHandler.getSubPersona(this.profile,
                       role.toLowerCase(), this.userLocation);
                 that.profileService.getActiveSessionProfile({ requiredFields: ProfileConstants.REQUIRED_FIELDS }).toPromise()
@@ -350,9 +340,6 @@ export class ProfilePage implements OnInit {
                     that.isStateValidated = that.profile.stateValidated;
                     resolve();
                   });
-                  if(profileData && profileData.framework && Object.keys(profileData.framework).length == 0) {
-                    await this.getFrameworkDetails();
-                  }
               });
             }).catch(err => {
               if (refresher) {
@@ -1177,61 +1164,6 @@ export class ProfilePage implements OnInit {
       sunbird_id: this.profile.userName
     });
     this.socialSharing.share(translatedMsg);
-  }
-
-  private async getFrameworkDetails() {
-    const guestUser = await this.commonUtilService.getGuestUserConfig();
-    let id = "";
-      id = guestUser.syllabus[0];
-    const frameworkDetailsRequest: FrameworkDetailsRequest = {
-      frameworkId: id,
-      requiredCategories: FrameworkCategoryCodesGroup.DEFAULT_FRAMEWORK_CATEGORIES
-    };
-    await this.frameworkService.getFrameworkDetails(frameworkDetailsRequest).toPromise()
-      .then(async (framework: Framework) => {
-        this.frameworkCategoriesMap = framework.categories.reduce((acc, category) => {
-          acc[category.code] = category;
-          return acc;
-        }, {});
-        this.profile.framework.board = [];
-        this.profile.framework.medium = [];
-        this.profile.framework.grade = [];
-        this.profile.framework.subject = [];
-        setTimeout(() => {
-          this.boardList = this.getFieldDisplayValues(guestUser.board, 'board');
-          this.mediumList = this.getFieldDisplayValues(guestUser.medium, 'medium');
-          this.gradeLevelList = this.getFieldDisplayValues(guestUser.grade, 'gradeLevel');
-          this.subjectList = this.getFieldDisplayValues(guestUser.subject, 'subject');
-          this.profile.framework.board = this.boardList;
-          this.profile.framework.medium = this.mediumList;
-          this.profile.framework.gradeLevel = this.gradeLevelList;
-          this.profile.framework.grade = this.gradeLevelList;
-          this.profile.framework.subject = this.subjectList;
-        }, 0);
-      });
-      this.profile.userLocations = await this.locationHandler.getAvailableLocation(guestUser, true);
-      this.userLocation = this.commonUtilService.getUserLocation(this.profile);
-      this.profile['persona'] =  await this.profileHandler.getPersonaConfig(guestUser.profileType.toLowerCase());
-  }
-
-  getFieldDisplayValues(field: Array<any>, categoryCode: string, lowerCase?: boolean): any[] {
-    const displayValues = [];
-
-    if (!this.frameworkCategoriesMap[categoryCode]) {
-      return displayValues;
-    }
-
-    this.frameworkCategoriesMap[categoryCode].terms.forEach(element => {
-      if (field.includes(element.code) || field.includes(element.name.replace(/[^a-zA-Z0-9]/g,'').toLowerCase())) {
-        if (lowerCase) {
-          displayValues.push(element.name.toLowerCase());
-        } else {
-          displayValues.push(element.name);
-        }
-      }
-    });
-
-    return displayValues;
   }
 
 }

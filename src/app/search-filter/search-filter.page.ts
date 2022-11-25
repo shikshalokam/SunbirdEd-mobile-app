@@ -4,7 +4,7 @@ import {Location, TitleCasePipe} from '@angular/common';
 import {ModalController} from '@ionic/angular';
 import {ContentService, ContentSearchCriteria, ContentSearchResult, SearchType, ContentSearchFilter} from 'sunbird-sdk';
 import {FilterFormConfigMapper} from '@app/app/search-filter/filter-form-config-mapper';
-import {CommonUtilService, Environment, FormAndFrameworkUtilService, InteractSubtype, InteractType, PageId, SearchFilterService, TelemetryGeneratorService} from '@app/services';
+import {CommonUtilService, FormAndFrameworkUtilService, SearchFilterService} from '@app/services';
 import {FieldConfig, IFacetFilterFieldTemplateConfig, SbSearchFacetFilterComponent} from 'common-form-elements';
 
 @Component({
@@ -38,8 +38,7 @@ export class SearchFilterPage implements OnInit {
         private commonUtilService: CommonUtilService,
         private filterFormConfigMapper: FilterFormConfigMapper,
         private formAndFrameworkUtilService: FormAndFrameworkUtilService,
-        private searchFilterService: SearchFilterService,
-        private telemetryGeneratorService: TelemetryGeneratorService
+        private searchFilterService: SearchFilterService
     ) {
     }
 
@@ -66,12 +65,6 @@ export class SearchFilterPage implements OnInit {
     }
 
     applyFilter() {
-        this.telemetryGeneratorService.generateInteractTelemetry(
-            InteractType.TOUCH,
-            InteractSubtype.APPLY_FILTER_CLICKED,
-            Environment.HOME,
-            PageId.COURSE_SEARCH_FILTER,
-            undefined);
         this.modalController.dismiss({
             appliedFilterCriteria: this.formAndFrameworkUtilService.changeChannelNameToId(this.appliedFilterCriteria)
         });
